@@ -17,7 +17,8 @@ def main():
     nsteps = 1000
     x = np.linspace(0,1,n+1)
     u0 = np.zeros(n+1)
-    f = lambda t: np.sin(10*t)/5
+    # f = lambda t: np.sin(10*t)/5
+    f = lambda t: 2*np.exp(-t)*np.sin(10*t)/5
     
     # initialise
     U = np.zeros([nsteps+1,n+1])
@@ -32,7 +33,7 @@ def main():
     ln = ax.plot(x,U[0],"o-")
     plt.xlabel('x')
     plt.ylabel('u')
-    plt.ylim(-0.2,0.2)
+    plt.ylim(-0.4,0.4)
     
     # s = 0
     U[1,0] = f(k)
