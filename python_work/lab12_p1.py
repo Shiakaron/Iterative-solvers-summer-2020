@@ -74,7 +74,7 @@ n = 23
 k = 1e-3
 a = 1
 nsteps = 400	
-show = False
+show = True
 x = np.linspace(0,1,n+1)     # nodes of the domain
 u0 = np.cos(np.pi*x/2)         # initial condition
 
