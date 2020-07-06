@@ -73,8 +73,8 @@ def solver_plot(n,k,nsteps,u0,a=1,show=False,exact=None):
 
 ##################################################################
 n = 23
-k = 1e-3
-a = 0.5
+k = 5e-4
+a = 1
 nsteps = 1000	
 show = True
 x = np.linspace(0,1,n+1)     # nodes of the domain

@@ -15,25 +15,22 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
 
-
 # Number of intervals per direction
 n = 1000
 
 # Mesh spacing and number of unknown nodes
 h = 1/n
-N = n*(n-1)
+N = (n-1)**2
 
 # Diagonals of Laplacian operator
-main  = -4*np.ones(N)
+main  = np.full(N,-4)
 off = np.ones(N-1)
 off[n-2::n-1] = 0
 
-upper = np.ones((n-1)**2)
-lower = np.ones((n-1)**2)
-lower [1-n:] = 2
+upp_or_low = np.ones((n-1)*(n-2))
  
 # Form the matrix
-A = scipy.sparse.diags(diagonals=[main,off,off,upper,lower],\
+A = scipy.sparse.diags(diagonals=[main,off,off,upp_or_low,upp_or_low],\
                        offsets=[0,1,-1,n-1,1-n],format='csc')
 
 # Right-hand-side vector
@@ -44,7 +41,8 @@ uu = scipy.sparse.linalg.spsolve(A,b)
 
 # 2D arrays for plotting
 u = np.zeros([n+1,n+1])
-u[1:,1:-1] = np.reshape(uu,(n,n-1))
+
+u[1:-1,1:-1] = np.reshape(uu,(n-1,n-1))
 
 # Flow Rate (computed from 2D Trapezium Rule)
 Q = 0.25*h**2*(4*np.sum(u)-2*np.sum(u[0,:]+u[-1,:]+u[:,0]+u[:,-1]) \
