@@ -39,6 +39,10 @@ def solver_plot(n,k,nsteps,u0,a=1,show=False,exact=None):
     U = np.zeros([nsteps+1,n+1]) # solution array
     U[0] = u0	                 # initial condition
     print(p)
+    if p>=0.5:
+        print("p greater than 1/2. Unstable")
+    else:
+        print("p less than 1/2. Stable")
     if show:  # Prepare plotting window and plot the IC 
         plt.close('all')
         fig, ax = plt.subplots()
@@ -70,10 +74,10 @@ def solver_plot(n,k,nsteps,u0,a=1,show=False,exact=None):
     return x,U
 
 ##################################################################
-n = 23 
+n = 23
 k = 1e-3
-a = 1
-nsteps = 400	
+a = 0.5
+nsteps = 1000	
 show = True
 x = np.linspace(0,1,n+1)     # nodes of the domain
 u0 = np.cos(np.pi*x/2)         # initial condition
@@ -82,9 +86,9 @@ u0 = np.cos(np.pi*x/2)         # initial condition
 u = lambda x,t: np.exp(-a*np.pi**2*t/4)*np.cos(np.pi*x/2)
 
 if show:
-    x,U = solver_plot(n,k,nsteps,u0,show=True,exact=u)
+    x,U = solver_plot(n,k,nsteps,u0,a,show=True,exact=u)
 else:
-    U = solver(n,k,nsteps,u0)
+    U = solver(n,k,nsteps,u0,a)
     
     plt.clf()
     plt.plot(x,u(x,nsteps*k),label='exact')
