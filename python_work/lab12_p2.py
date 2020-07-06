@@ -12,12 +12,16 @@ def main():
     a = 1
     n = 10
     k = 0.025
-    nsteps = 15
+    nsteps = 100
     x = np.linspace(0,1,n+1) # spatial nodes
     u0 = np.sin(np.pi*x) # initial condition
     
+    # solution
+    u = lambda x,t: np.exp(-a*np.pi**2*t)*np.sin(np.pi*x)
+    
     # initialise 
     p = a*k*n**2 
+    print("p = ", p)
     U = np.zeros([nsteps+1,n+1])
     U[0] = u0 
     r = np.arange(1,n,1) # indices of interior nodes   
@@ -25,25 +29,28 @@ def main():
     # for plotting
     plt.close("all")
     fig, ax = plt.subplots()
-    ln = ax.plot(x,U[0],"o-")
+    ln = ax.plot(x,U[0],"o-", x, u(x,0))
     plt.xlabel('x')
     plt.ylabel('u')
     
     # LU factorisation
-    alph = -p*np.ones(n-1)
-    bet = 2*(p+1)*np.ones(n)
+    alph = np.full(n-1,-p) 
+    bet = np.full(n,2*(p+1)) 
     l, v = trilu(alph, bet, alph) 
     
     # time steps
     for s in range(nsteps):
-        print(s, U[s])
-        b = p*U[s,r+1] + (1-2*p)*U[s,r] + p*U[s,r-1]
+        # print(s, U[s])
+        b = p*U[s,r+1] + 2*(1-p)*U[s,r] + p*U[s,r-1]
         # Dirichlet boundary conditions: u(0,t) = u(1,t) = 0
-        U[s+1] = np.append(0, np.append(trisolve(l, v, alph, b), 0))
+        # U[s+1] = np.append(0, np.append(trisolve(l, v, alph, b), 0))
+        U[s+1] = np.concatenate(([0], trisolve(l, v, alph, b), [0]))
         
         # draw
         ln[0].set_ydata(U[s+1])
+        ln[1].set_ydata(u(x,(s+1)*k))
         plt.title('t = {:1.3f}'.format((s+1)*k))
+        plt.ylim([0,1.1*max(U[s+1])])
         fig.canvas.draw()
         fig.canvas.flush_events()
     

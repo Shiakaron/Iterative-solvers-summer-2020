@@ -25,7 +25,8 @@ def main():
     U[0] = u0
     r = np.arange(1,n,1)
     a = 1 + k/2
-    b = k**2*n**2
+    b = 1 - k/2
+    c = k**2*n**2
     
     # for plotting
     plt.close("all")
@@ -39,7 +40,7 @@ def main():
     U[1,0] = f(k)
     # s = 1:nsteps
     for s in range(nsteps):
-        U[s+1,r] = (b*(U[s,r+1]+U[s,r-1])+2*(1-b)*U[s,r])/a-U[s-1,r]
+        U[s+1,r] = (2*U[s,r] - b*U[s-1,r] + c*(U[s,r+1] - 2*U[s,r] + U[s,r-1]))/a
         U[s+1,0] = f(s*k)
         # draw
         ln[0].set_ydata(U[s+1])

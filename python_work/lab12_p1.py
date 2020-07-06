@@ -38,11 +38,9 @@ def solver_plot(n,k,nsteps,u0,a=1,show=False,exact=None):
     p = a*k*n**2                 # scheme parameter, n=1/h
     U = np.zeros([nsteps+1,n+1]) # solution array
     U[0] = u0	                 # initial condition
-    print(p)
+    print("p = ", p)
     if p>=0.5:
-        print("p greater than 1/2. Unstable")
-    else:
-        print("p less than 1/2. Stable")
+        print("p greater than 1/2. This can be unstable")
     if show:  # Prepare plotting window and plot the IC 
         plt.close('all')
         fig, ax = plt.subplots()
