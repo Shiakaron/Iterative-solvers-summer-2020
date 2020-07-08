@@ -8,6 +8,7 @@ import math
 import numpy as np
 from scipy.sparse import diags, block_diag, linalg
 import matplotlib.pyplot as plt
+import matplotlib
 
 def main():
     """
@@ -39,7 +40,7 @@ def main():
     
     # for plotting
     fig, ax = plt.subplots(figsize=(10,10))
-    im = ax.imshow(U.reshape(N,N))
+    im = ax.imshow(U.reshape(N,N), extent=[0,d,0,d], interpolation="sinc")
     plt.title("0")
     plt.tight_layout()
 
@@ -48,7 +49,6 @@ def main():
     plotSteps = round(1/k); # PLOT ROUGHLY EVERY ONE TIME UNIT
     for s in range(Nsteps):
         # HERE U is U[s] and Uo is U[s-1]
-        # D = spdiags($,0,N^2,N^2);
         D = diags(np.multiply(5*U - Uo,5*U - Uo)*k/16-g*k*U,0,shape=(nn,nn),format="csc")
         
         # BEFORE OVERWRITING U, STORE U[s] to Uo for the next iteration
@@ -56,11 +56,13 @@ def main():
      
         # COMPUTE U[s+1], OVERWRITING U
         U = linalg.spsolve((I + D - L*k/2), np.transpose((I+L*k/2) @ Uo)) 
+        # print(max(U), min(U))
         
         # plot
         if s%plotSteps==0:
             plt.title('t = {:1.3f}'.format((s+1)*k)) 
             im.set_data(U.reshape(N,N))
+            im.set_clim(vmax=max(U),vmin=min(U))
             fig.canvas.draw()
             fig.canvas.flush_events()
     
