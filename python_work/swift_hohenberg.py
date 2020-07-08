@@ -18,7 +18,6 @@ def main():
     h = d/N # mesh spacing
     k = 0.2 # time step
     Tf = 500 # final time
-    x = np.arange(0,d,h) # spatial variable for plotting
     
     # pde parameters
     r = 0.2
