@@ -11,13 +11,14 @@ from scipy.sparse import diags, block_diag, linalg
 from scipy.optimize import newton_krylov
 import matplotlib.pyplot as plt
 import matplotlib
-
+from matplotlib import animation, rc
+from IPython.display import HTML
 
 d = 40 # domain size
 N = 64  # points in each direction
 h = d/N # mesh spacing
 k = 0.2 # time step
-Tf = 500 # final time
+Tf = 100 # final time
 
 # random initial condition
 U = np.random.randn(N**2) # this corresponds to U[0]
@@ -44,30 +45,53 @@ fig, ax = plt.subplots(figsize=(10,10))
 im = ax.imshow(U.reshape(N,N), extent=[0,d,0,d], interpolation="sinc")
 plt.title("0")
 plt.tight_layout()
-plt.show()
+plotSteps = round(1/k) # PLOT ROUGHLY EVERY two time units
+Nsteps = math.ceil(Tf/k/plotSteps) # ESTIMATE NUMBER OF TIME STEPS REQUIRED
+print(Nsteps)
+def init():
+    im.set_data(U.reshape(N,N))
+    return im,
+
+def animate(i):
+    print(i)
+    global U, Uo, UoUo, UoUoUo, im
+    for i in range(plotSteps):
+        Uo = U.copy()
+        UoUo = np.multiply(Uo,Uo)
+        UoUoUo = np.multiply(Uo,UoUo)
+        U = newton_krylov(residual, Uo, verbose=0)
+    plt.title('t = {:1.3f}'.format((i+1)*k*plotSteps)) 
+    im.set_data(U.reshape(N,N))
+    im.set_clim(vmax=max(U),vmin=min(U))
+    return im,
 
 def residual(u):
     uu = np.multiply(u,u)
     return (u-Uo)/k - (L @ u + g*uu - np.multiply(u,uu) + L @ Uo + g*UoUo - UoUoUo)/2
  
-Nsteps = math.ceil(Tf/k)    # ESTIMATE NUMBER OF TIME STEPS REQUIRED
-plotSteps = round(1/k) # PLOT ROUGHLY EVERY ONE TIME UNIT
-for s in range(Nsteps):
-    # HERE U is U[s] and Uo is U[s-1]
-    # BEFORE OVERWRITING U, STORE U[s] to Uo for the next iteration
-    Uo = U.copy()
-    UoUo = np.multiply(Uo,Uo)
-    UoUoUo = np.multiply(Uo,UoUo)
-    
-    # NEWTON KRYLOV
-    U = newton_krylov(residual, Uo, verbose=1)
 
-    # plot
-    if s%plotSteps==0:
-        plt.title('t = {:1.3f}'.format((s+1)*k)) 
-        im.set_data(U.reshape(N,N))
-        im.set_clim(vmax=max(U),vmin=min(U))
-        fig.canvas.draw()
-        fig.canvas.flush_events()
+anim = animation.FuncAnimation(fig,animate,init_func=init,frames=Nsteps,interval=100,blit=True)
+# plt.rcParams['animation.ffmpeg_path'] = '/mnt/c/FFmpeg/bin/ffmpeg.exe'
+# HTML(anim.to_html5_video())
+anim.save("test.mp4")
+
+
+# for s in range(Nsteps):
+#     # HERE U is U[s] and Uo is U[s-1]
+#     # BEFORE OVERWRITING U, STORE U[s] to Uo for the next iteration
+#     Uo = U.copy()
+#     UoUo = np.multiply(Uo,Uo)
+#     UoUoUo = np.multiply(Uo,UoUo)
+    
+#     # NEWTON KRYLOV
+#     U = newton_krylov(residual, Uo, verbose=1)
+
+#     # plot
+#     if s%plotSteps==0:
+#         plt.title('t = {:1.3f}'.format((s+1)*k)) 
+#         im.set_data(U.reshape(N,N))
+#         im.set_clim(vmax=max(U),vmin=min(U))
+#         fig.canvas.draw()
+#         fig.canvas.flush_events()
 
 
