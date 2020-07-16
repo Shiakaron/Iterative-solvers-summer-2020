@@ -26,8 +26,8 @@ UoUo = None
 UoUoUo = None
 
 # pde parameters
-r = 0.2
-g = 0
+r = 0.01
+g = 1
 
 # FORM THE DISCREET LAPLACIAN
 e = 1/h**2
@@ -49,17 +49,17 @@ def residual(u):
     uu = np.multiply(u,u)
     return (u-Uo)/k - (L @ u + g*uu - np.multiply(u,uu) + L @ Uo + g*UoUo - UoUoUo)/2
  
-Nsteps = math.ceil(Tf/k);    # ESTIMATE NUMBER OF TIME STEPS REQUIRED
-plotSteps = round(1/k); # PLOT ROUGHLY EVERY ONE TIME UNIT
+Nsteps = math.ceil(Tf/k) # ESTIMATE NUMBER OF TIME STEPS REQUIRED
+plotSteps = round(1/k) # PLOT ROUGHLY EVERY ONE TIME UNIT
 for s in range(Nsteps):
     # HERE U is U[s] and Uo is U[s-1]
     # BEFORE OVERWRITING U, STORE U[s] to Uo for the next iteration
-    Uo = U.copy(); 
+    Uo = U.copy()
     UoUo = np.multiply(Uo,Uo)
     UoUoUo = np.multiply(Uo,UoUo)
     
     # NEWTON KRYLOV
-    U = newton_krylov(residual, Uo, verbose=1)
+    U = newton_krylov(residual, Uo, verbose=0)
 
     # plot
     if s%plotSteps==0:
