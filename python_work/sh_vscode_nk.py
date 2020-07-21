@@ -7,12 +7,10 @@ Created on Thu Jul  9 15:46:30 2020
 
 import math
 import numpy as np
-from scipy.sparse import diags, block_diag, linalg
+from scipy.sparse import diags, block_diag
 from scipy.optimize import newton_krylov
 import matplotlib.pyplot as plt
-import matplotlib
-from matplotlib import animation, rc
-from IPython.display import HTML
+from matplotlib import animation
 
 d = 40 # domain size
 N = 64  # points in each direction
@@ -47,13 +45,12 @@ plt.title("0")
 plt.tight_layout()
 plotSteps = round(1/k) # PLOT ROUGHLY EVERY two time units
 Nsteps = math.ceil(Tf/k/plotSteps) # ESTIMATE NUMBER OF TIME STEPS REQUIRED
-print(Nsteps)
 def init():
     im.set_data(U.reshape(N,N))
     return im,
 
 def animate(i):
-    print(i)
+    print(i, " / ", Nsteps)
     global U, Uo, UoUo, UoUoUo, im
     for i in range(plotSteps):
         Uo = U.copy()
@@ -71,27 +68,5 @@ def residual(u):
  
 
 anim = animation.FuncAnimation(fig,animate,init_func=init,frames=Nsteps,interval=100,blit=True)
-# plt.rcParams['animation.ffmpeg_path'] = '/mnt/c/FFmpeg/bin/ffmpeg.exe'
-# HTML(anim.to_html5_video())
 anim.save("test.mp4")
-
-
-# for s in range(Nsteps):
-#     # HERE U is U[s] and Uo is U[s-1]
-#     # BEFORE OVERWRITING U, STORE U[s] to Uo for the next iteration
-#     Uo = U.copy()
-#     UoUo = np.multiply(Uo,Uo)
-#     UoUoUo = np.multiply(Uo,UoUo)
-    
-#     # NEWTON KRYLOV
-#     U = newton_krylov(residual, Uo, verbose=1)
-
-#     # plot
-#     if s%plotSteps==0:
-#         plt.title('t = {:1.3f}'.format((s+1)*k)) 
-#         im.set_data(U.reshape(N,N))
-#         im.set_clim(vmax=max(U),vmin=min(U))
-#         fig.canvas.draw()
-#         fig.canvas.flush_events()
-
 

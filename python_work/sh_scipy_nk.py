@@ -7,10 +7,9 @@ Created on Thu Jul  9 15:46:30 2020
 
 import math
 import numpy as np
-from scipy.sparse import diags, block_diag, linalg
+from scipy.sparse import diags, block_diag
 from scipy.optimize import newton_krylov
 import matplotlib.pyplot as plt
-import matplotlib
 
 
 d = 40 # domain size
