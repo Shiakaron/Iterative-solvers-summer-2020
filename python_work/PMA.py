@@ -55,7 +55,8 @@ def make_M():
     Making derivative matrices
     For: 
         A.1 Discretising Q_ξξ, Q_ηη
-        A.2 Discretising Q_ηξ, Q_ξη
+        A.2 Discretising Q_ηξ = Q_ξη (and Q_ξ, Q_η) 
+        
     """
     # A.1 
     eye = diags([1], shape=(N_,N_))
@@ -65,10 +66,23 @@ def make_M():
     temp[1,0]=10; temp[1,1]=-15; temp[1,2]=-4; temp[1,3]=14; temp[1,4]=-6; temp[1,5]=1
     temp[-2,-1]=10; temp[-2,-2]=-15; temp[-2,-3]=-4; temp[-2,-4]=14; temp[-2,-5]=-6; temp[-2,-6]=1
     temp = csc_matrix(temp/(12*dksi_*dksi_))
-    M.d2Ksi = kron(eye, temp)
-    M.d2eta = kron(temp, eye)
+    # assign to M
+    M.d2ksi = kron(eye, temp) # d^2f/dksi^2
+    M.d2eta = kron(temp, eye) # d^2f/deta^2
     
     # A.2
+    temp = lil_matrix(diags([1, -8, 8, -1], [-2, -1, 1, 2], shape=(N_, N_), format="csc"))
+    temp[0,0]=-25; temp[0,1]=48; temp[0,2]=-36; temp[0,3]=16; temp[0,4]=-3
+    temp[-1,-1]=-25; temp[-1,-2]=48; temp[-1,-3]=-36; temp[-1,-4]=16; temp[-1,-5]=-3
+    temp[1,0]=-3; temp[1,1]=-10; temp[1,2]=18; temp[1,3]=-16; temp[1,4]=1
+    temp[-2,-1]=-3; temp[-2,-2]=-10; temp[-2,-3]=18; temp[-2,-4]=-16; temp[-2,-5]=1
+    temp = csc_matrix(temp/(12*dksi_))
+    # assign to M
+    M.dksi = kron(eye,temp) # df/dksi
+    M.deta = kron(temp,eye) # df/deta
+    M.dksideta = kron(temp,temp) #d^2f/dksideta
+    
+    
     
     
     
