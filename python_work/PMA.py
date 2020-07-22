@@ -6,7 +6,7 @@ Created on Tue Jul 21 10:18:42 2020
 """
 import numpy as np
 from scipy.integrate import solve_ivp
-from scipy.sparse import diags, kron, lil_matrix, csc_matrix
+from scipy.sparse import diags, kron, csc_matrix
 import matplotlib.pyplot as plt
 
 #GLOBAL variables
@@ -29,15 +29,19 @@ Ibdy = lambda:0 # information on indices (boundary, interior, corners)
 M = lambda:0 # derivative matrices
 
 def main():
+    global Ibdy, M
     # initialise Q, Ibdy
     Q = np.reshape(0.5*ksiksi**2 + 0.5*etaeta**2, NN_) # mesh potential
     Ibdy = make_Ibdy()
     M = make_M()
     
     # ode solver
-    sol = solve_ivp(ode_coupled_systems(t, y), )
+    # sol = solve_ivp(ode_coupled_systems(t, y), )
     
 def make_Ibdy():
+    """
+    Making arrays containg indices information
+    """
     allidx = np.arange(0,NN_)
     X = np.reshape(ksiksi, NN_)
     Y = np.reshape(etaeta, NN_)
@@ -52,64 +56,62 @@ def make_Ibdy():
 
 def make_M():
     """
-    Making derivative matrices
-    For: 
-        A.1 Discretising Q_ξξ, Q_ηη
-        A.2 Discretising Q_ηξ = Q_ξη (and Q_ξ, Q_η) 
-        
+    Making derivative matrices                
     """
-    # A.1 
     eye = diags([1], shape=(N_,N_))
-    temp = lil_matrix(diags([-1, 16, -30, 16, -1], [-2, -1, 0, 1, 2], shape=(N_, N_), format="csc"))
+    # A.1 
+    temp = diags([-1, 16, -30, 16, -1], [-2, -1, 0, 1, 2], shape=(N_, N_), format="lil")
     temp[0,0]=-415/16; temp[0,1]=96; temp[0,2]=-36; temp[0,3]=32/3; temp[0,4]=-3/2
     temp[-1,-1]=-415/16; temp[-1,-2]=96; temp[-1,-3]=-36; temp[-1,-4]=32/3; temp[-1,-5]=-3/2
     temp[1,0]=10; temp[1,1]=-15; temp[1,2]=-4; temp[1,3]=14; temp[1,4]=-6; temp[1,5]=1
     temp[-2,-1]=10; temp[-2,-2]=-15; temp[-2,-3]=-4; temp[-2,-4]=14; temp[-2,-5]=-6; temp[-2,-6]=1
     temp = csc_matrix(temp/(12*dksi_*dksi_))
-    # assign to M
     M.d2ksi = kron(eye, temp) # d^2f/dksi^2
     M.d2eta = kron(temp, eye) # d^2f/deta^2
     
     # A.2
-    temp = lil_matrix(diags([1, -8, 8, -1], [-2, -1, 1, 2], shape=(N_, N_), format="csc"))
+    temp = diags([1, -8, 8, -1], [-2, -1, 1, 2], shape=(N_, N_), format="lil")
     temp[0,0]=-25; temp[0,1]=48; temp[0,2]=-36; temp[0,3]=16; temp[0,4]=-3
     temp[-1,-1]=-25; temp[-1,-2]=48; temp[-1,-3]=-36; temp[-1,-4]=16; temp[-1,-5]=-3
     temp[1,0]=-3; temp[1,1]=-10; temp[1,2]=18; temp[1,3]=-16; temp[1,4]=1
     temp[-2,-1]=-3; temp[-2,-2]=-10; temp[-2,-3]=18; temp[-2,-4]=-16; temp[-2,-5]=1
     temp = csc_matrix(temp/(12*dksi_))
-    # assign to M
-    M.dksi = kron(eye,temp) # df/dksi
-    M.deta = kron(temp,eye) # df/deta
+    M.dksiCentre = kron(eye,temp) # df/dksi centre difference
+    M.detaCentre = kron(temp,eye) # df/deta centre difference
     M.dksideta = kron(temp,temp) #d^2f/dksideta
     
+    # C - upwinding scheme
+    #forward
+    temp = diags([-3,4,-1], [0,1,2], shape=(N_,N_), format="lil")
+    temp[-1,-1]=3; temp[-1,-2]=-4; temp[-1,-3]=1
+    temp[-2,-1]=2; temp[-2,-2]=-2
+    temp - csc_matrix(temp/(2*dksi_))
+    M.dksiForw = kron(eye, temp) # df/dksi forward difference
+    M.detaForw = kron(temp, eye) # df/deta forward difference
     
+    #backward
+    temp = diags([1,-4,3], [-2,1,0], shape=(N_,N_), format="lil")
+    temp[0,0]=-3; temp[0,1]=4; temp[0,2]=-1
+    temp[1,0]=-2; temp[1,1]=2
+    temp - csc_matrix(temp/(2*dksi_))
+    M.dksiBack = kron(eye, temp) # df/dksi backward difference
+    M.detaBack = kron(temp, eye) # df/deta backward difference
     
-    
-    
-#     D114X = spdiags([ex -8*ex zx 8*ex -ex],-2:2,nx,nx);
-# D114X(1,1) = -25; D114X(1,2) = 48; D114X(1,3) = -36; D114X(1,4)= 16; D114X(1,5)= -3;
-# D114X(2,1) = -3; D114X(2,2) = -10; D114X(2,3) = 18; D114X(2,4) = -6; D114X(2,5) = 1;
-# D114X(end-1,end) = 3; D114X(end-1,end-1) = 10; D114X(end-1,end-2) = -18; D114X(end-1,end-3) = 6; D114X(end-1,end-4) = -1;
-# D114X(end,end) = 25; D114X(end,end-1) = -48; D114X(end,end-2) = 36; D114X(end,end-3)= -16; D114X(end,end-4)= 3;
-# D114X = D114X/(12*hx);
+    # Smoothing Matrix
+    off1 = np.ones(NN_-1)
+    off1[(N_-1)::N_] = 0 
+    off2 = np.ones(NN_-3)
+    off2[0::N_] = 0 
+    M.Sm = diags([off1[:-N_],2,off2,2*off1,4,2*off1,off2,2,off1[:-N_]], [-N_-1,-N_,-N_+1,-1,0,1,N_-1,N_,N_+1], shape=(NN_, NN_))/16
 
-# D114Y = spdiags([ey -8*ey zy 8*ey -ey],-2:2,ny,ny);
-# D114Y(1,1) = -25; D114Y(1,2) = 48; D114Y(1,3) = -36; D114Y(1,4)= 16; D114Y(1,5)= -3;
-# D114Y(2,1) = -3; D114Y(2,2) = -10; D114Y(2,3) = 18; D114Y(2,4) = -6; D114Y(2,5) = 1;
-# D114Y(end-1,end) = 3; D114Y(end-1,end-1) = 10; D114Y(end-1,end-2) = -18; D114Y(end-1,end-3) = 6; D114Y(end-1,end-4) = -1;
-# D114Y(end,end) = 25; D114Y(end,end-1) = -48; D114Y(end,end-2) = 36; D114Y(end,end-3)= -16; D114Y(end,end-4)= 3;
-# D114Y = D114Y/(12*hy);
-# M.D2XY4 = kron(D114Y,D114X);M.D1XC = kron(Iy,D114X);M.D1YC = kron(D114Y,Ix);
-    
-    
-    
-    
 
 def ode_coupled_systems(t, y):
     """
     y[0] = Q
     y[1] = u
+    exluded: y[2] = t'
     """
+    return [dQdt, dudt] 
 
   
 def compute_g(u):
