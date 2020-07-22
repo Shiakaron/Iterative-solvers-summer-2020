@@ -27,11 +27,12 @@ ksi = np.linspace(endl_, endr_, N_)
 ksiksi, etaeta = np.meshgrid(ksi, ksi) # square grid
 Ibdy = lambda:0 # information on indices (boundary, interior, corners)
 M = lambda:0 # derivative matrices
+Q = lambda:0 # mesh potential and all its derivatives
 
 def main():
-    global Ibdy, M
+    global Q, Ibdy, M
     # initialise Q, Ibdy
-    Q = np.reshape(0.5*ksiksi**2 + 0.5*etaeta**2, NN_) # mesh potential
+    Q.val = np.reshape(0.5*ksiksi**2 + 0.5*etaeta**2, NN_) # mesh potential
     Ibdy = make_Ibdy()
     M = make_M()
     
@@ -72,9 +73,9 @@ def make_M():
     # A.2
     temp = diags([1, -8, 8, -1], [-2, -1, 1, 2], shape=(N_, N_), format="lil")
     temp[0,0]=-25; temp[0,1]=48; temp[0,2]=-36; temp[0,3]=16; temp[0,4]=-3
-    temp[-1,-1]=-25; temp[-1,-2]=48; temp[-1,-3]=-36; temp[-1,-4]=16; temp[-1,-5]=-3
+    temp[-1,-1]=25; temp[-1,-2]=-48; temp[-1,-3]=36; temp[-1,-4]=-16; temp[-1,-5]=3
     temp[1,0]=-3; temp[1,1]=-10; temp[1,2]=18; temp[1,3]=-16; temp[1,4]=1
-    temp[-2,-1]=-3; temp[-2,-2]=-10; temp[-2,-3]=18; temp[-2,-4]=-16; temp[-2,-5]=1
+    temp[-2,-1]=3; temp[-2,-2]=10; temp[-2,-3]=-18; temp[-2,-4]=16; temp[-2,-5]=-1
     temp = csc_matrix(temp/(12*dksi_))
     M.dksiCentre = kron(eye,temp) # df/dksi centre difference
     M.detaCentre = kron(temp,eye) # df/deta centre difference
