@@ -28,13 +28,16 @@ ksiksi, etaeta = np.meshgrid(ksi, ksi) # square grid
 Ibdy = lambda:0 # information on indices (boundary, interior, corners)
 M = lambda:0 # derivative matrices
 Q = lambda:0 # mesh potential and all its derivatives
+Mon = None # monitor function
+u = lambda:0 # solution and its derivatives
 
 def main():
     global Q, Ibdy, M
     # initialise Q, Ibdy
     Q.val = np.reshape(0.5*ksiksi**2 + 0.5*etaeta**2, NN_) # mesh potential
-    Ibdy = make_Ibdy()
-    M = make_M()
+    make_Ibdy()
+    make_M()
+    
     
     # ode solver
     # sol = solve_ivp(ode_coupled_systems(t, y), )
@@ -46,8 +49,8 @@ def make_Ibdy():
     allidx = np.arange(0,NN_)
     X = np.reshape(ksiksi, NN_)
     Y = np.reshape(etaeta, NN_)
-    Ibdy.All = np.nonzero((X == endr_) | (X == endl_) | (Y == endr_) | (Y == endl_))[0]
-    Ibdy.Interior = np.setdiff1d(allidx, Ibdy.All)
+    Ibdy.Boundary = np.nonzero((X == endr_) | (X == endl_) | (Y == endr_) | (Y == endl_))[0]
+    Ibdy.Interior = np.setdiff1d(allidx, Ibdy.Boundary)
     Ibdy.Top = np.nonzero(Y == endr_)[0]; Ibdy.Bottom = np.nonzero(Y == endl_)[0]
     Ibdy.Right = np.nonzero(X == endr_)[0]; Ibdy.Left = np.nonzero(X == endl_)[0]
     Ibdy.BottomLeft = np.intersect1d(Ibdy.Bottom, Ibdy.Left)[0]
@@ -62,8 +65,8 @@ def make_M():
     eye = diags([1], shape=(N_,N_))
     # A.1 
     temp = diags([-1, 16, -30, 16, -1], [-2, -1, 0, 1, 2], shape=(N_, N_), format="lil")
-    temp[0,0]=-415/16; temp[0,1]=96; temp[0,2]=-36; temp[0,3]=32/3; temp[0,4]=-3/2
-    temp[-1,-1]=-415/16; temp[-1,-2]=96; temp[-1,-3]=-36; temp[-1,-4]=32/3; temp[-1,-5]=-3/2
+    temp[0,0]=-415/6; temp[0,1]=96; temp[0,2]=-36; temp[0,3]=32/3; temp[0,4]=-3/2
+    temp[-1,-1]=-415/6; temp[-1,-2]=96; temp[-1,-3]=-36; temp[-1,-4]=32/3; temp[-1,-5]=-3/2
     temp[1,0]=10; temp[1,1]=-15; temp[1,2]=-4; temp[1,3]=14; temp[1,4]=-6; temp[1,5]=1
     temp[-2,-1]=10; temp[-2,-2]=-15; temp[-2,-3]=-4; temp[-2,-4]=14; temp[-2,-5]=-6; temp[-2,-6]=1
     temp = csc_matrix(temp/(12*dksi_*dksi_))
@@ -74,8 +77,8 @@ def make_M():
     temp = diags([1, -8, 8, -1], [-2, -1, 1, 2], shape=(N_, N_), format="lil")
     temp[0,0]=-25; temp[0,1]=48; temp[0,2]=-36; temp[0,3]=16; temp[0,4]=-3
     temp[-1,-1]=25; temp[-1,-2]=-48; temp[-1,-3]=36; temp[-1,-4]=-16; temp[-1,-5]=3
-    temp[1,0]=-3; temp[1,1]=-10; temp[1,2]=18; temp[1,3]=-16; temp[1,4]=1
-    temp[-2,-1]=3; temp[-2,-2]=10; temp[-2,-3]=-18; temp[-2,-4]=16; temp[-2,-5]=-1
+    temp[1,0]=-3; temp[1,1]=-10; temp[1,2]=18; temp[1,3]=-6; temp[1,4]=1
+    temp[-2,-1]=3; temp[-2,-2]=10; temp[-2,-3]=-18; temp[-2,-4]=6; temp[-2,-5]=-1
     temp = csc_matrix(temp/(12*dksi_))
     M.dksiCentre = kron(eye,temp) # df/dksi centre difference
     M.detaCentre = kron(temp,eye) # df/deta centre difference
@@ -105,6 +108,21 @@ def make_M():
     off2[0::N_] = 0 
     M.Sm = diags([off1[:-N_],2,off2,2*off1,4,2*off1,off2,2,off1[:-N_]], [-N_-1,-N_,-N_+1,-1,0,1,N_-1,N_,N_+1], shape=(NN_, NN_))/16
 
+def compute_Q_derivatives():
+    """
+    compute all derivatives of the mesh potetial
+    """
+    # 1st derivatives
+    Q.dksi = M.dksiCentre*Q.val
+    Q.deta = M.detaCentre*Q.val
+    # 2nd derivatives
+    extra = 25/(6*dksi_)
+    temp = np.zeros(NN_); temp[Ibdy.Left] = extra; temp[Ibdy.Right] = extra
+    Q.d2ksi = M.d2ksi*Q.val + temp
+    temp = np.zeros(NN_); temp[Ibdy.Top] = extra; temp[Ibdy.Bottom] = extra
+    Q.d2eta = M.d2eta*Q.val + temp
+    Q.dksideta = M.dksideta*Q.val; Q.dksideta[Ibdy.Boundary] = 0
+
 
 def ode_coupled_systems(t, y):
     """
@@ -112,11 +130,11 @@ def ode_coupled_systems(t, y):
     y[1] = u
     exluded: y[2] = t'
     """
-    return [dQdt, dudt] 
+    #return [dQdt, dudt] 
 
   
 def compute_g(u):
-    if epsilon == 0:
+    if epsilon_ == 0:
         return min((1+u)**3)
     else:
         return 1
