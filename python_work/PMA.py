@@ -22,6 +22,7 @@ lambd_ = 10 # quantifies the relative importance of electrostatic and elastic fo
 endl_, endr_ = -1, 1
 d_ = endr_ - endl_ # domain size
 dksi_ = d_/(N_-1) # deta_ = dksi_
+dksi2_ = dksi_*dksi_
 
 #GLOBAL vectors, matrices
 ksi = np.linspace(endl_, endr_, N_)
@@ -75,7 +76,7 @@ def make_M():
     temp[1,:6] = [10, -15, -4, 14, -6, 1]
     temp[-1,-5:] = [-1.5, 32/3, -36, 96, -415/6]
     temp[-2,-6:] = [1, -6, 14, -4, -15, 10]
-    temp = csc_matrix(temp/(12*dksi_*dksi_))
+    temp = csc_matrix(temp/(12*dksi2_))
     M.d2ksi = kron(eye, temp) # d^2f/dksi^2
     M.d2eta = kron(temp, eye) # d^2f/deta^2
     
@@ -108,7 +109,7 @@ def make_M():
     # for discreet cosine transform
     temp = (2*np.cos(np.pi*np.arange(0,N_)/N_)-2).reshape((N_,1))*np.ones(N_) + \
     np.ones((N_,1))*(2*np.cos(np.pi*np.arange(0,N_)/N_)-2)
-    M.Leig = temp/(dksi_*dksi_)
+    M.Leig = temp/dksi2_
     
     # Smoothing Matrix
     off1 = np.ones(NN_-1)
@@ -144,48 +145,81 @@ def compute_u_spatial_ders():
     u.dx = np.divide(np.multiply(Q.d2eta,u_dksi) - np.multiply(Q.dksideta,u_deta), J)
     u.dy = np.divide(- np.multiply(Q.dksideta,u_dksi) + np.multiply(Q.d2ksi,u_deta), J)
     # 2nd derivatives (xx, yy) - laplacian operator
-    u.xx, u.yy = Laplace_operator(np.reshape(u.val,(N_,N_)))
+    u.xx, u.yy = Laplace_operator(np.reshape(u.val,(N_,N_)), np.reshape(u_dksi,(N_,N_)), np.reshape(u.deta,(N_,N_)))
     
-def Laplace_operator(v):
+def Laplace_operator(v, v_dksi, v_deta):
     """    
-    L(u) = u_xx + u_yy = J^-1 * div_ksi { J^-1 * A * grad_ksi (u) }
-    
+    L(v) = v_xx + v_yy = J^-1 * div_ksi { J^-1 * A * grad_ksi (v) }
     more consicely:
-    
-    u_xx = J^-1 * [ ( A11 * u_dksi )_ksi + ( A12 * u_deta)_ksi ]
-    
-    u_yy = J^-1 * [ ( A12 * u_dksi )_eta + ( A22 * u_deta)_eta ]
-    
+    v_xx = J^-1 * [ ( A11 * v_dksi )_ksi + ( A12 * v_deta)_ksi ]
+    v_yy = J^-1 * [ ( A12 * v_dksi )_eta + ( A22 * v_deta)_eta ]
     where appendix B shows the discretisation of the bracketed terms.
-    
-    This function should work for L(v) = L(L(u)) = L^2(u), where L^2 is the bilaplacian
-    
+       
+    The arguments need to be NxN arrays
     """    
     # initialise 
     A11 = np.reshape(np.divide(Q.dksideta**2 + Q.d2eta**2, J), (N_, N_))
     A22 = np.reshape(np.divide(Q.dksideta**2 + Q.d2ksi**2, J), (N_, N_))
     A12 = np.reshape(-np.divide(np.multiply(Q.dksideta, Q.d2ksi + Q.d2eta), J), (N_, N_))
-    u_xx = np.zeros((N_, N_)); u_yy = np.zeros((N_, N_))
+    v_xx = np.zeros((N_, N_)); v_yy = np.zeros((N_, N_))
     
     # B.1 : (A11*u_dksi)_ksi, (A22*u_deta)_eta
     # interior points 
     r = np.arange(3,N_-3) 
-    u_xx[:,r] += (4*np.multiply(A11[:,r-1], (v[:,r-3] - 8*v[:,r-2] + 8*v[:,r] - v[:,r+1])) 
+    v_xx[:,r] = (4*np.multiply(A11[:,r-1], (v[:,r-3] - 8*v[:,r-2] + 8*v[:,r] - v[:,r+1])) 
                   -np.multiply((-A11[:,r-2] + 9*A11[:,r-1] + 9*A11[:,r] - A11[:,r+1]), 
                                (v[:,r-2] - 27*v[:,r-1] + 27*v[:,r] - v[:,r+1])) 
                   +np.multiply((-A11[:,r-1] + 9*A11[:,r] + 9*A11[:,r+1] - A11[:,r+2]), 
                                (v[:,r-1] - 27*v[:,r] + 27*v[:,r+1] - v[:,r+2]))
-                  -4*np.multiply(A11[:,r+1], (v[:,r-1] - 8*v[:,r] + 8*v[:,r+2] - v[:,r+3])))/(288*dksi_*dksi_)
+                  -4*np.multiply(A11[:,r+1], (v[:,r-1] - 8*v[:,r] + 8*v[:,r+2] - v[:,r+3])))/(288*dksi2_)
     
-    u_yy[r,:] += (4*np.multiply(A22[r-1,:], (v[r-3,:] - 8*v[r-2,:] + 8*v[r,:] - v[r+1,:]))
+    v_yy[r,:] = (4*np.multiply(A22[r-1,:], (v[r-3,:] - 8*v[r-2,:] + 8*v[r,:] - v[r+1,:]))
                   -np.multiply((-A22[r-2,:] + 9*A22[r-1,:] + 9*A22[r,:] - A22[r+1,:]), 
                                (v[r-2,:] - 27*v[r-1,:] + 27*v[r,:] - v[r+1,:]))
                   +np.multiply((-A22[r-1,:] + 9*A22[r,:] + 9*A22[r+1,:] - A22[r+2,:]), 
                                (v[r-1,:] - 27*v[r,:] + 27*v[r+1,:] - v[r+2,:]))
-                  -4*np.multiply(A22[r+1,:], (v[r-1,:] - 8*v[r,:] + 8*v[r+2,:] - v[r+3,:])))/(288*dksi_*dksi_)
+                  -4*np.multiply(A22[r+1,:], (v[r-1,:] - 8*v[r,:] + 8*v[r+2,:] - v[r+3,:])))/(288*dksi2_)
     
-    # next to boundary points
+    # next-to boundary points
+    v_xx[:,1] = np.multiply(A11[:,1], (10*v[:,0] - 15*v[:,1] - 4*v[:,2] + 14*v[:,3] - 6*v[:,4] + v[:,5]))/(12*dksi2_) \
+        + np.multiply((-3*v[:,0] - 10*v[:,1] + 18*v[:,2] - 6*v[:,3] + v[:,4]), 
+                      (-3*A11[:,0] - 10*A11[:,1] + 18*A11[:,2] - 6*A11[:,3] + A11[:,4]))/(144*dksi2_)
+        
+    v_yy[:,1] = np.multiply(A22[1,:], (10*v[0,:] - 15*v[1,:] - 4*v[2,:] + 14*v[3,:] - 6*v[4,:] + v[5,:]))/(12*dksi2_) \
+        + np.multiply((-3*v[0,:] - 10*v[1,:] + 18*v[2,:] - 6*v[3,:] + v[4,:]), 
+                      (-3*A22[0,:] - 10*A22[1,:] + 18*A22[2,:] - 6*A22[3,:] + A22[4,:]))/(144*dksi2_)
     
+    v_xx[:,-2] = np.multiply(A11[:,-2], (10*v[:,-1] - 15*v[:,-2] - 4*v[:,-3] + 14*v[:,-4] - 6*v[:,-5] + v[:,-6]))/(12*dksi2_) \
+        + np.multiply((-3*v[:,-1] - 10*v[:,-2] + 18*v[:,-3] - 6*v[:,-4] + v[:,-5]), 
+                      (-3*A11[:,-1] - 10*A11[:,-2] + 18*A11[:,-3] - 6*A11[:,-4] + A11[:,-5]))/(144*dksi2_)
+        
+    v_yy[:,-2] = np.multiply(A22[-2,:], (10*v[-1,:] - 15*v[-2,:] - 4*v[-3,:] + 14*v[-4,:] - 6*v[-5,:] + v[-6,:]))/(12*dksi2_) \
+        + np.multiply((-3*v[-1,:] - 10*v[-2,:] + 18*v[-3,:] - 6*v[-4,:] + v[-5,:]), 
+                      (-3*A22[-1,:] - 10*A22[-2,:] + 18*A22[-3,:] - 6*A22[-4,:] + A22[-5,:]))/(144*dksi2_)
+        
+    # next-to-next-to boundary points
+    v_xx[:,2] = np.multiply(A11[:,2], (-v[:,0] + 16*v[:,1] - 30*v[:,2] + 16*v[:,3] - v[:,4]))/(12*dksi2_) \
+        + np.multiply((v[:,0] - 8*v[:,1] + 8*v[:,3] - v[:,4]), (A11[:,0] - 8*A11[:,1] + 8*A11[:,3] - A11[:,4]))/(144*dksi2_)
+        
+    v_yy[2,:] = np.multiply(A22[2,:], (-v[0,:] + 16*v[1,:] - 30*v[2,:] + 16*v[3,:] - v[4,:]))/(12*dksi2_) \
+        + np.multiply((v[0,:] - 8*v[1,:] + 8*v[3,:] - v[4,:]), (A11[0,:] - 8*A11[1,:] + 8*A11[3,:] - A11[4,:]))/(144*dksi2_)
+        
+    v_xx[:,-3] = np.multiply(A11[:,-3], (-v[:,-1] + 16*v[:,-2] - 30*v[:,-3] + 16*v[:,-4] - v[:,-5]))/(12*dksi2_) \
+        + np.multiply((v[:,-1] - 8*v[:,-2] + 8*v[:,-4] - v[:,-5]), 
+                      (A11[:,-1] - 8*A11[:,-2] + 8*A11[:,-4] - A11[:,-5]))/(144*dksi2_)
+    
+    v_yy[-3,:] = np.multiply(A22[-3,:], (-v[-1,:] + 16*v[-2,:] - 30*v[-3,:] + 16*v[-4,:] - v[-5,:]))/(12*dksi2_) \
+        + np.multiply((v[-1,:] - 8*v[-2,:] + 8*v[-4,:] - v[-5,:]), 
+                      (A11[-1,:] - 8*A11[-2,:] + 8*A11[-4,:] - A11[-5,:]))/(144*dksi2_)
+    
+    # B.2 (A12*u_deta)_ksi, (A12*u_dksi)_eta
+    temp = M.dksiCentre*np.multiply(A12, v_deta)
+    
+    
+    
+    return np.reshape(v_xx, NN_), np.reshape(v_yy, NN_)
+    
+        
     
 def compute_monitor():
     """
