@@ -143,7 +143,17 @@ def compute_u_spatial_ders():
     # 1st derivatives (x, y)
     u.dx = np.divide(np.multiply(Q.d2eta,u_dksi) - np.multiply(Q.dksideta,u_deta), J)
     u.dy = np.divide(- np.multiply(Q.dksideta,u_dksi) + np.multiply(Q.d2ksi,u_deta), J)
-    # create Laplacian operator?
+    # 2nd derivatives (xx, yy) - laplacian operator
+    u.xx, u.yy = Laplace_operator(u_dksi, u_deta)
+    
+def Laplace_operator(u_dksi, u_deta):
+    """
+    use appendix B to solve for the laplacian of u where 
+    L(u) = u_xx + u_yy = J^-1 * div_ksi { J^-1 * A * grad_ksi (u) }
+    """    
+    A11 = np.divide(Q.dksideta**2 + Q.d2eta**2, J)
+    A22 = np.divide(Q.dksideta**2 + Q.d2ksi**2, J)
+    A12 = -np.divide(np.multiply(Q.dksideta, Q.d2ksi + Q.d2eta), J)
     
     
 def compute_monitor():
@@ -157,13 +167,14 @@ def compute_monitor():
         for p = 2
             mon = |u_xx + u_yy|^2
     """
+    global monitor
     if epsilon_ == 0:
-        return 1/(1+u.val)**6
+        monitor =  1/(1+u.val)**6
     else:
         if p_ == 1:
-            return 1 + u.dx**2 + u.dy**2
+            monitor = 1 + u.dx**2 + u.dy**2
         else:
-            return np.sqrt(np.abs(u.d2x + u.d2y))  
+            monitor = np.sqrt(np.abs(u.d2x + u.d2y))  
 
 def solve_PMA():
     """
