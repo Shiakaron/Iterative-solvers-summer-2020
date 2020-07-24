@@ -144,16 +144,47 @@ def compute_u_spatial_ders():
     u.dx = np.divide(np.multiply(Q.d2eta,u_dksi) - np.multiply(Q.dksideta,u_deta), J)
     u.dy = np.divide(- np.multiply(Q.dksideta,u_dksi) + np.multiply(Q.d2ksi,u_deta), J)
     # 2nd derivatives (xx, yy) - laplacian operator
-    u.xx, u.yy = Laplace_operator(u_dksi, u_deta)
+    u.xx, u.yy = Laplace_operator(np.reshape(u.val,(N_,N_)))
     
-def Laplace_operator(u_dksi, u_deta):
-    """
-    use appendix B to solve for the laplacian of u where 
-    L(u) = u_xx + u_yy = J^-1 * div_ksi { J^-1 * A * grad_ksi (u) }
+def Laplace_operator(v):
     """    
-    A11 = np.divide(Q.dksideta**2 + Q.d2eta**2, J)
-    A22 = np.divide(Q.dksideta**2 + Q.d2ksi**2, J)
-    A12 = -np.divide(np.multiply(Q.dksideta, Q.d2ksi + Q.d2eta), J)
+    L(u) = u_xx + u_yy = J^-1 * div_ksi { J^-1 * A * grad_ksi (u) }
+    
+    more consicely:
+    
+    u_xx = J^-1 * [ ( A11 * u_dksi )_ksi + ( A12 * u_deta)_ksi ]
+    
+    u_yy = J^-1 * [ ( A12 * u_dksi )_eta + ( A22 * u_deta)_eta ]
+    
+    where appendix B shows the discretisation of the bracketed terms.
+    
+    This function should work for L(v) = L(L(u)) = L^2(u), where L^2 is the bilaplacian
+    
+    """    
+    # initialise 
+    A11 = np.reshape(np.divide(Q.dksideta**2 + Q.d2eta**2, J), (N_, N_))
+    A22 = np.reshape(np.divide(Q.dksideta**2 + Q.d2ksi**2, J), (N_, N_))
+    A12 = np.reshape(-np.divide(np.multiply(Q.dksideta, Q.d2ksi + Q.d2eta), J), (N_, N_))
+    u_xx = np.zeros((N_, N_)); u_yy = np.zeros((N_, N_))
+    
+    # B.1 : (A11*u_dksi)_ksi, (A22*u_deta)_eta
+    # interior points 
+    r = np.arange(3,N_-3) 
+    u_xx[:,r] += (4*np.multiply(A11[:,r-1], (v[:,r-3] - 8*v[:,r-2] + 8*v[:,r] - v[:,r+1])) 
+                  -np.multiply((-A11[:,r-2] + 9*A11[:,r-1] + 9*A11[:,r] - A11[:,r+1]), 
+                               (v[:,r-2] - 27*v[:,r-1] + 27*v[:,r] - v[:,r+1])) 
+                  +np.multiply((-A11[:,r-1] + 9*A11[:,r] + 9*A11[:,r+1] - A11[:,r+2]), 
+                               (v[:,r-1] - 27*v[:,r] + 27*v[:,r+1] - v[:,r+2]))
+                  -4*np.multiply(A11[:,r+1], (v[:,r-1] - 8*v[:,r] + 8*v[:,r+2] - v[:,r+3])))/(288*dksi_*dksi_)
+    
+    u_yy[r,:] += (4*np.multiply(A22[r-1,:], (v[r-3,:] - 8*v[r-2,:] + 8*v[r,:] - v[r+1,:]))
+                  -np.multiply((-A22[r-2,:] + 9*A22[r-1,:] + 9*A22[r,:] - A22[r+1,:]), 
+                               (v[r-2,:] - 27*v[r-1,:] + 27*v[r,:] - v[r+1,:]))
+                  +np.multiply((-A22[r-1,:] + 9*A22[r,:] + 9*A22[r+1,:] - A22[r+2,:]), 
+                               (v[r-1,:] - 27*v[r,:] + 27*v[r+1,:] - v[r+2,:]))
+                  -4*np.multiply(A22[r+1,:], (v[r-1,:] - 8*v[r,:] + 8*v[r+2,:] - v[r+3,:])))/(288*dksi_*dksi_)
+    
+    # next to boundary points
     
     
 def compute_monitor():
