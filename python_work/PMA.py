@@ -42,6 +42,9 @@ def main():
     make_M()
     u.val = np.zeros(NN_) # initialise u
     
+    # each time step:
+    solve_PMA()
+    
     # ode solver
     # sol = solve_ivp(ode_coupled_systems(t, y), )
     
@@ -68,20 +71,18 @@ def make_M():
     eye = diags([1], shape=(N_,N_))
     # A.1 
     temp = diags([-1, 16, -30, 16, -1], [-2, -1, 0, 1, 2], shape=(N_, N_), format="lil")
-    temp[0,0]=-415/6; temp[0,1]=96; temp[0,2]=-36; temp[0,3]=32/3; temp[0,4]=-3/2
-    temp[-1,-1]=-415/6; temp[-1,-2]=96; temp[-1,-3]=-36; temp[-1,-4]=32/3; temp[-1,-5]=-3/2
-    temp[1,0]=10; temp[1,1]=-15; temp[1,2]=-4; temp[1,3]=14; temp[1,4]=-6; temp[1,5]=1
-    temp[-2,-1]=10; temp[-2,-2]=-15; temp[-2,-3]=-4; temp[-2,-4]=14; temp[-2,-5]=-6; temp[-2,-6]=1
+    temp[0,:5] = [-415/6, 96, -36, 32/3, -1.5]
+    temp[1,:6] = [10, -15, -4, 14, -6, 1]
+    temp[-1,-5:] = [-1.5, 32/3, -36, 96, -415/6]
+    temp[-2,-6:] = [1, -6, 14, -4, -15, 10]
     temp = csc_matrix(temp/(12*dksi_*dksi_))
     M.d2ksi = kron(eye, temp) # d^2f/dksi^2
     M.d2eta = kron(temp, eye) # d^2f/deta^2
     
     # A.2
     temp = diags([1, -8, 8, -1], [-2, -1, 1, 2], shape=(N_, N_), format="lil")
-    temp[0,0]=-25; temp[0,1]=48; temp[0,2]=-36; temp[0,3]=16; temp[0,4]=-3
-    temp[-1,-1]=25; temp[-1,-2]=-48; temp[-1,-3]=36; temp[-1,-4]=-16; temp[-1,-5]=3
-    temp[1,0]=-3; temp[1,1]=-10; temp[1,2]=18; temp[1,3]=-6; temp[1,4]=1
-    temp[-2,-1]=3; temp[-2,-2]=10; temp[-2,-3]=-18; temp[-2,-4]=6; temp[-2,-5]=-1
+    temp[:2,:5] = [[-25, 48, -36, 16, -3], [-3, -10, 18, -6, 1]]
+    temp[-2:,-5:] = [[-1, 6, -18, 10, 3], [3, -16, 36, -48, 25]]
     temp = csc_matrix(temp/(12*dksi_))
     M.dksiCentre = kron(eye,temp) # df/dksi centre difference
     M.detaCentre = kron(temp,eye) # df/deta centre difference
@@ -90,16 +91,16 @@ def make_M():
     # C - upwinding scheme
     #forward
     temp = diags([-3,4,-1], [0,1,2], shape=(N_,N_), format="lil")
-    temp[-1,-1]=3; temp[-1,-2]=-4; temp[-1,-3]=1
-    temp[-2,-1]=2; temp[-2,-2]=-2
+    temp[-1,-3:] = [1, -4, 3]
+    temp[-2,-2:] = [-2, 2]
     temp - csc_matrix(temp/(2*dksi_))
     M.dksiForw = kron(eye, temp) # df/dksi forward difference
     M.detaForw = kron(temp, eye) # df/deta forward difference
     
     #backward
     temp = diags([1,-4,3], [-2,1,0], shape=(N_,N_), format="lil")
-    temp[0,0]=-3; temp[0,1]=4; temp[0,2]=-1
-    temp[1,0]=-2; temp[1,1]=2
+    temp[0,:3] = [-3, 4, -1]
+    temp[1,:2] = [-2, 2]
     temp - csc_matrix(temp/(2*dksi_))
     M.dksiBack = kron(eye, temp) # df/dksi backward difference
     M.detaBack = kron(temp, eye) # df/deta backward difference
@@ -114,11 +115,12 @@ def make_M():
     off1[(N_-1)::N_] = 0 
     off2 = np.ones(NN_-3)
     off2[0::N_] = 0 
-    M.Sm = diags([off1[:-N_],2,off2,2*off1,4,2*off1,off2,2,off1[:-N_]], [-N_-1,-N_,-N_+1,-1,0,1,N_-1,N_,N_+1], shape=(NN_, NN_))/16
+    M.Sm = diags([off1[:-N_],2,off2,2*off1,4,2*off1,off2,2,off1[:-N_]], \
+                 [-N_-1,-N_,-N_+1,-1,0,1,N_-1,N_,N_+1], shape=(NN_, NN_))/16
 
 def compute_Q_spatial_ders():
     """
-    compute spacial (ksi, eta) derivatives of the mesh potetial
+    compute spatial (ksi, eta) derivatives of the mesh potetial
     """
     # 1st derivatives
     Q.dksi = M.dksiCentre*Q.val
@@ -135,7 +137,12 @@ def compute_u_spatial_ders():
     """
     compute spatial (x, y) derivatives of the solution
     """
-    
+    # 1st derivatives (ksi, eta) - not saved in u struct
+    u_dksi = M.dksiCentre*u.val
+    u_deta = M.detaCentre*u.val
+    # 1st derivatives (x, y)
+    u.dx = np.divide(np.multiply(Q.d2eta,u_dksi) - np.multiply(Q.dksideta,u_deta), J)
+    u.dy = np.divide(- np.multiply(Q.dksideta,u_dksi) + np.multiply(Q.d2ksi,u_deta), J)
     
     
 def compute_monitor():
@@ -156,12 +163,14 @@ def solve_PMA():
     solve for dQdt
     """
     global J
+    compute_Q_spatial_ders()
+    J = np.multiply(Q.d2ksi, Q.d2eta) - np.multiply(Q.dksideta, Q.dksideta)
     compute_u_spatial_ders()
     compute_monitor()
-    J = np.multiply(Q.d2ksi, Q.d2eta) - np.multiply(Q.dksideta, Q.dksideta)
     q_rhs = np.sqrt(np.multiply(monitor, np.abs(J)))/epsilon_
     temp = dct(q_rhs.reshape(N_,N_))
     dQdt = idct(np.divide(temp,(1-gamma_*M.Leig)))
+    
     return dQdt.reshape(NN_)
 
 
