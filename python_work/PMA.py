@@ -222,9 +222,7 @@ def Laplace_operator(v, v_dksi, v_deta):
     temp[Ibdy.Boundary] = 0
     v_xx += temp
     
-    return np.divide(np.reshape(v_xx, NN_), J), np.divide(np.reshape(v_yy, NN_), J)
-    
-        
+    return np.divide(np.reshape(v_xx, NN_), J), np.divide(np.reshape(v_yy, NN_), J)     
     
 def compute_monitor():
     """
