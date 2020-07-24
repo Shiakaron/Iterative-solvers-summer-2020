@@ -31,7 +31,7 @@ M = lambda:0 # derivative matrices
 Q = lambda:0 # mesh potential and all its derivatives
 u = lambda:0 # solution and its derivatives
 monitor = None # monitor function
-J = None # Hessian of Q
+J = None # Hessian (Jacobian) of Q
 
 
 def main():
@@ -143,20 +143,27 @@ def compute_u_spatial_ders():
     # 1st derivatives (x, y)
     u.dx = np.divide(np.multiply(Q.d2eta,u_dksi) - np.multiply(Q.dksideta,u_deta), J)
     u.dy = np.divide(- np.multiply(Q.dksideta,u_dksi) + np.multiply(Q.d2ksi,u_deta), J)
+    # create Laplacian operator?
     
     
 def compute_monitor():
     """
     computes the monitor functino Mon
     for epsilon == 0
-        Mon = 1/(1+u)^6
+        mon = 1/(1+u)^6
     for epsilon > 0
         for p = 1
-            Mon = 1 + (u_x)^2 + (u_y)^2
+            mon = 1 + (u_x)^2 + (u_y)^2
         for p = 2
-            Mon = |u_xx + u_yy|^2
+            mon = |u_xx + u_yy|^2
     """
-    
+    if epsilon_ == 0:
+        return 1/(1+u.val)**6
+    else:
+        if p_ == 1:
+            return 1 + u.dx**2 + u.dy**2
+        else:
+            return np.sqrt(np.abs(u.d2x + u.d2y))  
 
 def solve_PMA():
     """
