@@ -145,7 +145,7 @@ def compute_u_spatial_ders():
     u.dx = np.divide(np.multiply(Q.d2eta,u_dksi) - np.multiply(Q.dksideta,u_deta), J)
     u.dy = np.divide(- np.multiply(Q.dksideta,u_dksi) + np.multiply(Q.d2ksi,u_deta), J)
     # 2nd derivatives (xx, yy) - laplacian operator
-    u.xx, u.yy = Laplace_operator(np.reshape(u.val,(N_,N_)), np.reshape(u_dksi,(N_,N_)), np.reshape(u.deta,(N_,N_)))
+    u.xx, u.yy = Laplace_operator(np.reshape(u.val,(N_,N_)), u_dksi, u_deta)
     
 def Laplace_operator(v, v_dksi, v_deta):
     """    
@@ -155,12 +155,13 @@ def Laplace_operator(v, v_dksi, v_deta):
     v_yy = J^-1 * [ ( A12 * v_dksi )_eta + ( A22 * v_deta)_eta ]
     where appendix B shows the discretisation of the bracketed terms.
        
-    The arguments need to be NxN arrays
+    The argument v needs to be an NxN array
+    v_dksi and v_deta are the ksi and eta derivatives of v and need to be 1D arrays of size NN_
     """    
     # initialise 
     A11 = np.reshape(np.divide(Q.dksideta**2 + Q.d2eta**2, J), (N_, N_))
     A22 = np.reshape(np.divide(Q.dksideta**2 + Q.d2ksi**2, J), (N_, N_))
-    A12 = np.reshape(-np.divide(np.multiply(Q.dksideta, Q.d2ksi + Q.d2eta), J), (N_, N_))
+    A12 = -np.divide(np.multiply(Q.dksideta, Q.d2ksi + Q.d2eta), J)
     v_xx = np.zeros((N_, N_)); v_yy = np.zeros((N_, N_))
     
     # B.1 : (A11*u_dksi)_ksi, (A22*u_deta)_eta
@@ -214,10 +215,14 @@ def Laplace_operator(v, v_dksi, v_deta):
     
     # B.2 (A12*u_deta)_ksi, (A12*u_dksi)_eta
     temp = M.dksiCentre*np.multiply(A12, v_deta)
+    temp[Ibdy.Boundary] = 0
+    v_xx += temp
     
+    temp = M.dksiCentre*np.multiply(A12, v_dksi)
+    temp[Ibdy.Boundary] = 0
+    v_xx += temp
     
-    
-    return np.reshape(v_xx, NN_), np.reshape(v_yy, NN_)
+    return np.divide(np.reshape(v_xx, NN_), J), np.divide(np.reshape(v_yy, NN_), J)
     
         
     
