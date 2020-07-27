@@ -8,21 +8,25 @@ import numpy as np
 from scipy.integrate import solve_ivp
 from scipy.sparse import diags, kron, csc_matrix
 from scipy.fft import dct, idct
+# from scipy.linalg import matrix_power
 import matplotlib.pyplot as plt
 
 #GLOBAL variables
 N_ = 10 # grid points
 NN_ = N_*N_ # total number of points
 p_ = 1 # set as 1 or 2
-m_ = 3 # set as 3 (Van der Walls) or 4 (Casimir)
-alpha_ = 0.1 
-gamma_ = 0.1
+m_ = 3 # set as 3 (Van der Walls), or 4 (Casimir)
+alpha_ = 0.1 # controls the mesh adaption speed 
+gamma_ = 0.1 # controls the extent of smoothing
+smoothing_iters_ = 4 # number of smoothing iterations per time step 
 epsilon_ = 0.05 # dimensionless parameter where, 0 <= epsilon << 1
-lambd_ = 10 # quantifies the relative importance of electrostatic and elastic forces in the system
+lambd_ = 100 # quantifies the relative importance of electrostatic and elastic forces in the system
 endl_, endr_ = -1, 1
 d_ = endr_ - endl_ # domain size
 dksi_ = d_/(N_-1) # deta_ = dksi_
 dksi2_ = dksi_*dksi_
+Tf = 0.5
+k = 1e-3
 
 #GLOBAL vectors, matrices
 ksi = np.linspace(endl_, endr_, N_)
@@ -31,7 +35,6 @@ Ibdy = lambda:0 # information on indices (boundary, interior, corners)
 M = lambda:0 # derivative matrices
 Q = lambda:0 # mesh potential and all its derivatives
 u = lambda:0 # solution and its derivatives
-monitor = None # monitor function
 J = None # Hessian (Jacobian) of Q
 
 
@@ -43,11 +46,8 @@ def main():
     make_M()
     u.val = np.zeros(NN_) # initialise u
     
-    # each time step:
-    solve_PMA()
-    
     # ode solver
-    # sol = solve_ivp(ode_coupled_systems(t, y), )
+    #sol = solve_ivp(ode_coupled_systems,  (0,Tf), u.val)
     
 def make_Ibdy():
     """
@@ -106,18 +106,18 @@ def make_M():
     M.dksiBack = kron(eye, temp) # df/dksi backward difference
     M.detaBack = kron(temp, eye) # df/deta backward difference
     
+    # Smoothing Matrix
+    # off1 = np.ones(NN_-1)
+    # off1[(N_-1)::N_] = 0 
+    # off2 = np.ones(NN_-3)
+    # off2[0::N_] = 0 
+    # M.Sm = diags([off1[:-N_],2,off2,2*off1,4,2*off1,off2,2,off1[:-N_]], \
+    #              [-N_-1,-N_,-N_+1,-1,0,1,N_-1,N_,N_+1], shape=(NN_, NN_))/16
+    
     # for discreet cosine transform
     temp = (2*np.cos(np.pi*np.arange(0,N_)/N_)-2).reshape((N_,1))*np.ones(N_) + \
     np.ones((N_,1))*(2*np.cos(np.pi*np.arange(0,N_)/N_)-2)
     M.Leig = temp/dksi2_
-    
-    # Smoothing Matrix
-    off1 = np.ones(NN_-1)
-    off1[(N_-1)::N_] = 0 
-    off2 = np.ones(NN_-3)
-    off2[0::N_] = 0 
-    M.Sm = diags([off1[:-N_],2,off2,2*off1,4,2*off1,off2,2,off1[:-N_]], \
-                 [-N_-1,-N_,-N_+1,-1,0,1,N_-1,N_,N_+1], shape=(NN_, NN_))/16
 
 def compute_Q_spatial_ders():
     """
@@ -216,15 +216,17 @@ def Laplace_operator(v, v_dksi, v_deta):
     # B.2 (A12*u_deta)_ksi, (A12*u_dksi)_eta
     temp = M.dksiCentre*np.multiply(A12, v_deta)
     temp[Ibdy.Boundary] = 0
+    v_xx = np.reshape(v_xx, NN_)
     v_xx += temp
     
     temp = M.dksiCentre*np.multiply(A12, v_dksi)
     temp[Ibdy.Boundary] = 0
-    v_xx += temp
+    v_yy = np.reshape(v_yy, NN_)
+    v_yy += temp
     
-    return np.divide(np.reshape(v_xx, NN_), J), np.divide(np.reshape(v_yy, NN_), J)     
+    return np.divide(v_xx, J), np.divide(v_yy, J)     
     
-def compute_monitor():
+def compute_and_smooth_monitor():
     """
     computes the monitor functino Mon
     for epsilon == 0
@@ -235,42 +237,97 @@ def compute_monitor():
         for p = 2
             mon = |u_xx + u_yy|^2
     """
-    global monitor
+    # initialise arrays
+    temp = np.zeros((N_, N_))
+    mon = np.zeros((N_, N_))
+    
+    # compute monitor function
     if epsilon_ == 0:
-        monitor =  1/(1+u.val)**6
+        temp =  (1/(1+u.val)**6).reshape((N_,N_))
     else:
         if p_ == 1:
-            monitor = 1 + u.dx**2 + u.dy**2
+            temp = (1 + u.dx**2 + u.dy**2).reshape((N_,N_))
         else:
-            monitor = np.sqrt(np.abs(u.d2x + u.d2y))  
+            temp = np.sqrt(np.abs(u.d2x + u.d2y)).reshape((N_,N_))
+    
+    # smoothing
+    # fourth-order filter
+    for i in range(smoothing_iters_):
+        # interior points
+        r = np.arange(1,N_-1)
+        mon[r,r] = temp[r,r] + (temp[r-1,r] + temp[r+1,r] + temp[r,r-1] + temp[r,r+1])/8 \
+            + (temp[r-1,r-1] + temp[r-1,r+1] + temp[r+1,r-1] + temp[r+1,r+1])/16
+    # for now, leave the boundary terms as they are    
+    mon = np.reshape(mon, NN_)
+    mon[Ibdy.Boundary] = np.reshape(temp, NN_)[Ibdy.Boundary]
+    # Mackenzie regularisation    
+    mon_integral = np.sum(mon*np.abs(J))*dksi2_
+    mon += mon_integral
+    return mon
 
 def solve_PMA():
     """
-    solve for dQdt
+    solve for dQdt = L.fancy^-1 * (|J|*M)^0/5
+    L.fancy^-1 is the inverse of the operator L.fancy = aplha*(Identity - gamma*Lap_ξ)
+    which is solved using discreet cosine transform
     """
-    global J
-    compute_Q_spatial_ders()
-    J = np.multiply(Q.d2ksi, Q.d2eta) - np.multiply(Q.dksideta, Q.dksideta)
-    compute_u_spatial_ders()
-    compute_monitor()
+    monitor = compute_and_smooth_monitor()
     q_rhs = np.sqrt(np.multiply(monitor, np.abs(J)))/epsilon_
     temp = dct(q_rhs.reshape(N_,N_))
     dQdt = idct(np.divide(temp,(1-gamma_*M.Leig)))
-    
     return dQdt.reshape(NN_)
 
+def compute_rhs_pde(Qt):
+    """
+    solve for dudt = -(-Lap)^p(u) - lambda/(1+u)^2 + lambda*epsilon^(m-2)/(1+u)^m + Langrangian_term
+    where the Langrangian_term = Grad_x{u} dot Grad_ksi{Q_t}.
+    """
+    dudt = lambd_/(1+u.val)**2 + lambd_*epsilon_**(m_-2)/(1+u.val)**m_
+    dudt += langrangian_term(Qt)
+    if p_ == 1:
+        dudt += u.xx + u.yy
+    else:
+        v = u.xx + u.yy
+        v_dksi = M.dksiCentre*v
+        v_deta = M.detaCentre*v
+        v.xx, v.yy = Laplace_operator(v.reshape(N_,N_), v_dksi, v_deta)
+        dudt -= v.xx + v.yy
+    return dudt
+
+def langrangian_term(Qt):
+    """
+    """
+    Qt_dksi = M.dksiCentre*Qt
+    Qt_deta = M.detaCentre*Qt
+    ret = np.zeros(NN_)
+    # upwinding in x direction
+    ret += 
+    
+    return ret
+    
+def upwinding_x(Qt):
+    
 
 def ode_coupled_systems(t, y):
     """
-    y[0] = Q
-    y[1] = u
-    exluded: y[2] = t'
     """
+    global J
+    # assign y, Q, (g?)
+    u.val = y[:NN_]
+    Q.val = y[NN_:]
     
+    # compute derivatives
+    compute_Q_spatial_ders()
+    J = np.multiply(Q.d2ksi, Q.d2eta) - np.multiply(Q.dksideta, Q.dksideta)
+    compute_u_spatial_ders()
     
-
-
-    #return [dQdt, dudt] 
+    # solve PMA for dQdt
+    dQdt = solve_PMA()
+    
+    # solve rhs of actual problem for dudt      
+    dudt = compute_rhs_pde(dQdt)
+    
+    return np.concatenate(dudt, dQdt)
 
   
 def compute_g(u):
