@@ -35,7 +35,7 @@ gamma = 4
 # Settings for animation
 fig = plt.figure()
 ax = fig.gca(projection='3d')
-surf =ax.plot_surface(x, y, u0, cmap='viridis')
+surf = ax.plot_surface(x, y, u0, cmap='viridis')
 ax.view_init(elev=30, azim=-120)
 ax.set_xlabel('x'); ax.set_ylabel('y'); ax.set_zlabel('u')
 ax.set_zlim3d(-.2,.2)  

@@ -17,8 +17,8 @@ def main():
     nsteps = 500
     x = np.linspace(0,1,n+1)
     u0 = np.zeros(n+1)
-    f = lambda t: np.sin(10*t)/5
-    # f = lambda t: 2*np.exp(-t)*np.sin(10*t)/5
+    # f = lambda t: np.sin(10*t)/5
+    f = lambda t: 2*np.exp(-t)*np.sin(10*t)/5
     
     # initialise
     U = np.zeros([nsteps+1,n+1])
