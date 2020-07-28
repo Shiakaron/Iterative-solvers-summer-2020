@@ -9,10 +9,14 @@ from scipy.integrate import solve_ivp
 from scipy.sparse import diags, kron, csc_matrix
 from scipy.fft import dct, idct
 # from scipy.linalg import matrix_power
+from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
+from matplotlib import cm
+# from matplotlib.ticker import LinearLocator, FormatStrFormatter
+from matplotlib.colors import LightSource
 
 #GLOBAL variables
-N_ = 10 # grid points
+N_ = 20 # grid points
 NN_ = N_*N_ # total number of points
 p_ = 1 # set as 1 or 2
 m_ = 3 # set as 3 (Van der Walls), or 4 (Casimir)
@@ -25,8 +29,7 @@ endl_, endr_ = -1, 1
 d_ = endr_ - endl_ # domain size
 dksi_ = d_/(N_-1) # deta_ = dksi_
 dksi2_ = dksi_*dksi_
-Tf = 0.5
-k = 1e-3
+Tf = 0.2
 
 #GLOBAL vectors, matrices
 ksi = np.linspace(endl_, endr_, N_)
@@ -37,17 +40,25 @@ Q = lambda:0 # mesh potential and all its derivatives
 u = lambda:0 # solution and its derivatives
 J = None # Hessian (Jacobian) of Q
 
+# for plotting
+fig = plt.figure()
+ax = fig.gca(projection='3d')
+ax.view_init(elev=30, azim=-120)
+ax.set_xlabel('x'); ax.set_ylabel('y'); ax.set_zlabel('u')
+ax.set_zlim3d(-1,.2)  
+ls = LightSource(azdeg=0, altdeg=65)
+u.val = np.zeros(NN_, dtype=float) # initialise u for plot
+surf = ax.plot_surface(ksiksi, etaeta, u.val.reshape(N_,N_), cmap='viridis')
 
 def main():
     global Q, Ibdy, M
-    # initialise Q, Ibdy, M, u
+    # initialise Q, Ibdy, M
     Q.val = np.reshape(0.5*ksiksi**2 + 0.5*etaeta**2, NN_) # mesh potential
     make_Ibdy()
     make_M()
-    u.val = np.zeros(NN_) # initialise u
     
     # ode solver
-    #sol = solve_ivp(ode_coupled_systems,  (0,Tf), u.val)
+    solve_ivp(ode_coupled_systems,  (0,Tf), np.concatenate((u.val, Q.val)))
     
 def make_Ibdy():
     """
@@ -124,23 +135,23 @@ def compute_Q_spatial_ders():
     compute spatial (ksi, eta) derivatives of the mesh potetial
     """
     # 1st derivatives
-    Q.dksi = M.dksiCentre*Q.val
-    Q.deta = M.detaCentre*Q.val
+    Q.dksi = M.dksiCentre.dot(Q.val)
+    Q.deta = M.detaCentre.dot(Q.val)
     # 2nd derivatives
     extra = 25/(6*dksi_)
     temp = np.zeros(NN_); temp[Ibdy.Left] = extra; temp[Ibdy.Right] = extra
-    Q.d2ksi = M.d2ksi*Q.val + temp
+    Q.d2ksi = M.d2ksi.dot(Q.val) + temp
     temp = np.zeros(NN_); temp[Ibdy.Top] = extra; temp[Ibdy.Bottom] = extra
-    Q.d2eta = M.d2eta*Q.val + temp
-    Q.dksideta = M.dksideta*Q.val; Q.dksideta[Ibdy.Boundary] = 0
+    Q.d2eta = M.d2eta.dot(Q.val) + temp
+    Q.dksideta = M.dksideta.dot(Q.val); Q.dksideta[Ibdy.Boundary] = 0
 
 def compute_u_spatial_ders():
     """
     compute spatial (x, y) derivatives of the solution
     """
     # 1st derivatives (ksi, eta) - not saved in u struct
-    u_dksi = M.dksiCentre*u.val
-    u_deta = M.detaCentre*u.val
+    u_dksi = M.dksiCentre.dot(u.val)
+    u_deta = M.detaCentre.dot(u.val)
     # 1st derivatives (x, y)
     u.dx = np.divide(np.multiply(Q.d2eta,u_dksi) - np.multiply(Q.dksideta,u_deta), J)
     u.dy = np.divide(- np.multiply(Q.dksideta,u_dksi) + np.multiply(Q.d2ksi,u_deta), J)
@@ -155,7 +166,7 @@ def Laplace_operator(v, v_dksi, v_deta):
     v_yy = J^-1 * [ ( A12 * v_dksi )_eta + ( A22 * v_deta)_eta ]
     where appendix B shows the discretisation of the bracketed terms.
        
-    The argument v needs to be an NxN array
+    The argument v needs to be an N_xN_ array
     v_dksi and v_deta are the ksi and eta derivatives of v and need to be 1D arrays of size NN_
     """    
     # initialise 
@@ -214,12 +225,12 @@ def Laplace_operator(v, v_dksi, v_deta):
                       (A11[-1,:] - 8*A11[-2,:] + 8*A11[-4,:] - A11[-5,:]))/(144*dksi2_)
     
     # B.2 (A12*u_deta)_ksi, (A12*u_dksi)_eta
-    temp = M.dksiCentre*np.multiply(A12, v_deta)
+    temp = M.dksiCentre.dot(np.multiply(A12, v_deta))
     temp[Ibdy.Boundary] = 0
     v_xx = np.reshape(v_xx, NN_)
     v_xx += temp
     
-    temp = M.dksiCentre*np.multiply(A12, v_dksi)
+    temp = M.dksiCentre.dot(np.multiply(A12, v_dksi))
     temp[Ibdy.Boundary] = 0
     v_yy = np.reshape(v_yy, NN_)
     v_yy += temp
@@ -238,8 +249,8 @@ def compute_and_smooth_monitor():
             mon = |u_xx + u_yy|^2
     """
     # initialise arrays
-    temp = np.zeros((N_, N_))
-    mon = np.zeros((N_, N_))
+    temp = np.zeros((N_, N_), dtype=float)
+    mon = np.zeros((N_, N_), dtype=float)
     
     # compute monitor function
     if epsilon_ == 0:
@@ -272,6 +283,7 @@ def solve_PMA():
     which is solved using discreet cosine transform
     """
     monitor = compute_and_smooth_monitor()
+    print(monitor.reshape(N_,N_))
     q_rhs = np.sqrt(np.multiply(monitor, np.abs(J)))/epsilon_
     temp = dct(q_rhs.reshape(N_,N_))
     dQdt = idct(np.divide(temp,(1-gamma_*M.Leig)))
@@ -280,41 +292,63 @@ def solve_PMA():
 def compute_rhs_pde(Qt):
     """
     solve for dudt = -(-Lap)^p(u) - lambda/(1+u)^2 + lambda*epsilon^(m-2)/(1+u)^m + Langrangian_term
-    where the Langrangian_term = Grad_x{u} dot Grad_ksi{Q_t}.
+    where the Langrangian_term = Grad_x{u} dot Grad_ksi{Qt}.
     """
-    dudt = lambd_/(1+u.val)**2 + lambd_*epsilon_**(m_-2)/(1+u.val)**m_
+    dudt = lambd_/((1+u.val)**2) + lambd_*(epsilon_**(m_-2))/((1+u.val)**m_)
     dudt += langrangian_term(Qt)
     if p_ == 1:
         dudt += u.xx + u.yy
-    else:
+    else: # p == 2
         v = u.xx + u.yy
         v_dksi = M.dksiCentre*v
         v_deta = M.detaCentre*v
         v.xx, v.yy = Laplace_operator(v.reshape(N_,N_), v_dksi, v_deta)
         dudt -= v.xx + v.yy
+    dudt[Ibdy.Boundary] = 0
     return dudt
 
 def langrangian_term(Qt):
     """
+    See appendix C
+    Langrangian_term = Grad_x{u} dot Grad_ksi{Q_t}.
+    Grad_ksi{Qt} = (a, b) = (Qt_dksi, Qt_deta)
     """
-    Qt_dksi = M.dksiCentre*Qt
-    Qt_deta = M.detaCentre*Qt
-    ret = np.zeros(NN_)
+    a = M.dksiCentre.dot(Qt)
+    b = M.detaCentre.dot(Qt)
+    ret = np.zeros(NN_, dtype=float)
+    u_ksi_forw = M.dksiForw.dot(u.val)
+    u_ksi_back = M.dksiBack.dot(u.val)
+    u_eta_forw = M.detaForw.dot(u.val)
+    u_eta_back = M.detaBack.dot(u.val)
     # upwinding in x direction
-    ret += 
-    
+    ret += np.minimum(a,0)*(np.maximum(b,0)*np.divide((Q.d2eta.dot(u_ksi_back) - Q.dksideta.dot(u_eta_forw)), J) +
+                            np.minimum(b,0)*np.divide((Q.d2eta.dot(u_ksi_back) - Q.dksideta.dot(u_eta_back)), J)) \
+         + np.maximum(a,0)*(np.maximum(b,0)*np.divide((Q.d2eta.dot(u_ksi_forw) - Q.dksideta.dot(u_eta_forw)), J) +
+                            np.minimum(b,0)*np.divide((Q.d2eta.dot(u_ksi_forw) - Q.dksideta.dot(u_eta_back)), J))
+    # upwinding in y direction
+    ret += np.minimum(a,0)*(np.maximum(b,0)*np.divide((-Q.dksideta.dot(u_ksi_back) + Q.d2ksi.dot(u_eta_forw)), J) +
+                            np.minimum(b,0)*np.divide((-Q.dksideta.dot(u_ksi_back) + Q.d2ksi.dot(u_eta_back)), J)) \
+         + np.maximum(a,0)*(np.maximum(b,0)*np.divide((-Q.dksideta.dot(u_ksi_forw) + Q.d2ksi.dot(u_eta_forw)), J) +
+                            np.minimum(b,0)*np.divide((-Q.dksideta.dot(u_ksi_forw) + Q.d2ksi.dot(u_eta_back)), J))
     return ret
-    
-def upwinding_x(Qt):
+
     
 
 def ode_coupled_systems(t, y):
     """
     """
-    global J
+    global J, surf
     # assign y, Q, (g?)
     u.val = y[:NN_]
     Q.val = y[NN_:]
+    
+    # # Update plots
+    surf.remove() 
+    surf = ax.plot_surface(ksiksi, etaeta, u.val.reshape(N_,N_), \
+                           color=(0,0.8,1),rstride=1, cstride=1, linewidth=0, \
+                           antialiased=False,alpha=0.5)
+    fig.canvas.draw()
+    fig.canvas.flush_events()      
     
     # compute derivatives
     compute_Q_spatial_ders()
@@ -327,7 +361,7 @@ def ode_coupled_systems(t, y):
     # solve rhs of actual problem for dudt      
     dudt = compute_rhs_pde(dQdt)
     
-    return np.concatenate(dudt, dQdt)
+    return np.concatenate((dudt, dQdt))
 
   
 def compute_g(u):
