@@ -26,12 +26,12 @@ alpha_ = 0.1 # controls the mesh adaption speed
 gamma_ = 0.1 # controls the extent of smoothing
 smoothing_iters_ = 4 # number of smoothing iterations per time step 
 epsilon_ = 0 # dimensionless parameter where, 0 <= epsilon << 1
-lambd_ = 100 # quantifies the relative importance of electrostatic and elastic forces in the system
+lambd_ = 10 # quantifies the relative importance of electrostatic and elastic forces in the system
 endl_, endr_ = -1, 1
 d_ = endr_ - endl_ # domain size
 dksi_ = d_/(N_-1) # deta_ = dksi_
 dksi2_ = dksi_*dksi_
-Tf = 0.2
+Tf = 0.1
 
 #GLOBAL vectors, matrices
 ksi = np.linspace(endl_, endr_, N_)
@@ -42,25 +42,43 @@ Q = lambda:0 # mesh potential and all its derivatives
 U = lambda:0 # solution and its derivatives
 J = None # Hessian (Jacobian) of Q
 
-# for plotting
-fig = plt.figure(figsize=(10,10))
-ax = fig.gca(projection='3d')
-ax.view_init(elev=30, azim=-120)
-ax.set_xlabel('x'); ax.set_ylabel('y'); ax.set_zlabel('u')
-ax.set_zlim3d(-1,.2)  
-ls = LightSource(azdeg=0, altdeg=65)
-surf = ax.plot_surface(ksiksi, etaeta, np.zeros((N_,N_)), cmap='viridis')
-
 def main():
     global Q, Ibdy, M
     # initialise Q, Ibdy, M, u
     Q.val = np.reshape(0.5*ksiksi**2 + 0.5*etaeta**2, NN_) # mesh potential
     make_Ibdy()
     make_M()
-    U.val = np.zeros(NN_, dtype=float) # initialise u for plot
+    U.val = np.zeros(NN_, dtype=float)
+    # U.val = -0.01*np.exp(-35*(ksiksi**2+etaeta**2)).reshape(NN_)
     
     # ode solver
-    solve_ivp(ode_coupled_systems,  (0,Tf), np.concatenate((U.val, Q.val)))
+    # sol = solve_ivp(ode_coupled_systems,  (0,Tf), np.concatenate((U.val, Q.val)))
+    
+    # ode solve without mesh adaptation
+    sol = solve_ivp(ode_coupled_systems,  (0,Tf), U.val)
+    
+    plot = True
+    # for plotting
+    if plot == True:
+        fig = plt.figure(figsize=(10,10))
+        ax = fig.gca(projection='3d')
+        ax.view_init(elev=30, azim=-120)
+        ax.set_xlabel('x'); ax.set_ylabel('y'); ax.set_zlabel('u')
+        ax.set_zlim3d(-1,.2)  
+        ls = LightSource(azdeg=0, altdeg=65)
+        surf = ax.plot_surface(ksiksi, etaeta, np.zeros((N_,N_)), cmap='viridis')
+        plt.show()
+        for i in range(len(sol.t)):
+            # Update plots
+            surf.remove() 
+            surf = ax.plot_surface(ksiksi, etaeta, (sol.y[:NN_,i]).reshape(N_,N_), \
+                                    color=(0,0.8,1),rstride=1, cstride=1, linewidth=0, \
+                                    antialiased=False,alpha=0.5)
+            fig.canvas.draw()
+            fig.canvas.flush_events()
+            fig.suptitle("frame: "+str(i)+", time: "+str(sol.t[i]))
+            plt.pause(0.1)
+    
     
 def make_Ibdy():
     """
@@ -347,18 +365,10 @@ def langrangian_term(Qt):
 def ode_coupled_systems(t, y):
     """
     """
-    global J, surf
+    global J 
     # assign y, Q, (g?)
-    U.val = y[:NN_]
-    Q.val = y[NN_:]
-    
-    # Update plots
-    surf.remove() 
-    surf = ax.plot_surface(ksiksi, etaeta, U.val.reshape(N_,N_), \
-                            color=(0,0.8,1),rstride=1, cstride=1, linewidth=0, \
-                            antialiased=False,alpha=0.5)
-    fig.canvas.draw()
-    fig.canvas.flush_events()      
+    # U.val = y[:NN_]
+    # Q.val = y[NN_:] 
     
     # compute derivatives
     compute_Q_spatial_ders()
@@ -366,8 +376,8 @@ def ode_coupled_systems(t, y):
     compute_u_spatial_ders()
     
     # solve PMA for dQdt
-    dQdt = solve_PMA()
-    
+    # dQdt = solve_PMA()
+    dQdt = np.zeros(NN_)
     # solve rhs of actual problem for dudt      
     dudt = compute_rhs_pde(dQdt)
     
@@ -376,7 +386,8 @@ def ode_coupled_systems(t, y):
     i += 1
     print("iteration : ", i)
     
-    return np.concatenate((dudt, dQdt))
+    # return np.concatenate((dudt, dQdt))
+    return dudt
 
   
 def compute_g(u):
