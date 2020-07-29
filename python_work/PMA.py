@@ -14,7 +14,6 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 # from matplotlib.ticker import LinearLocator, FormatStrFormatter
 from matplotlib.colors import LightSource
-import sys
 
 np.set_printoptions(edgeitems=6, suppress=True)
 i = 0
