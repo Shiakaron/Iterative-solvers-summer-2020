@@ -14,7 +14,9 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 # from matplotlib.ticker import LinearLocator, FormatStrFormatter
 from matplotlib.colors import LightSource
+import sys
 
+np.set_printoptions(edgeitems=15, suppress=True)
 i = 0
 
 #GLOBAL variables
@@ -55,9 +57,12 @@ def main():
     # sol = solve_ivp(ode_coupled_systems,  (0,Tf), np.concatenate((U.val, Q.val)))
     
     # ode solve without mesh adaptation
-    sol = solve_ivp(ode_coupled_systems,  (0,Tf), U.val)
+    sol = solve_ivp(ode_coupled_systems,  (0,Tf), U.val, events=touchdown)
+    touchdown.terminal=True
+    touchdown.direction=-1
+    print(sol.message)
     
-    plot = False
+    plot = True
     # for plotting
     if plot == True:
         fig = plt.figure(figsize=(10,10))
@@ -360,14 +365,15 @@ def langrangian_term(Qt):
                             np.minimum(b,0)*np.divide((-Q.dksideta*U_ksi_forw + Q.d2ksi*U_eta_back), J))
     return ret
 
-    
+def touchdown(t, y):
+    return min(y) + 1
 
 def ode_coupled_systems(t, y):
     """
     """
     global J 
     # assign U, Q, (g?)
-    # U.val = y[:NN_]
+    U.val = y
     # Q.val = y[NN_:] 
     
     # compute derivatives
