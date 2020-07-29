@@ -57,7 +57,7 @@ def main():
     # ode solve without mesh adaptation
     sol = solve_ivp(ode_coupled_systems,  (0,Tf), U.val)
     
-    plot = True
+    plot = False
     # for plotting
     if plot == True:
         fig = plt.figure(figsize=(10,10))
@@ -169,7 +169,7 @@ def compute_u_spatial_ders():
     """
     compute spatial (x, y) derivatives of the solution
     """
-    # 1st derivatives (ksi, eta) - not saved in u struct
+    # 1st derivatives (ksi, eta) - not saved in U struct
     U_dksi = M.dksiCentre.dot(U.val)
     U_deta = M.detaCentre.dot(U.val)
     # 1st derivatives (x, y)
@@ -349,15 +349,15 @@ def langrangian_term(Qt):
     U_eta_forw = M.detaForw.dot(U.val)
     U_eta_back = M.detaBack.dot(U.val)
     # upwinding in x direction
-    ret += np.minimum(a,0)*(np.maximum(b,0)*np.divide((Q.d2eta.dot(U_ksi_back) - Q.dksideta.dot(U_eta_forw)), J) +
-                            np.minimum(b,0)*np.divide((Q.d2eta.dot(U_ksi_back) - Q.dksideta.dot(U_eta_back)), J)) \
-         + np.maximum(a,0)*(np.maximum(b,0)*np.divide((Q.d2eta.dot(U_ksi_forw) - Q.dksideta.dot(U_eta_forw)), J) +
-                            np.minimum(b,0)*np.divide((Q.d2eta.dot(U_ksi_forw) - Q.dksideta.dot(U_eta_back)), J))
+    ret += np.minimum(a,0)*(np.maximum(b,0)*np.divide((Q.d2eta*U_ksi_back - Q.dksideta*U_eta_forw), J) +
+                            np.minimum(b,0)*np.divide((Q.d2eta*U_ksi_back - Q.dksideta*U_eta_back), J)) \
+         + np.maximum(a,0)*(np.maximum(b,0)*np.divide((Q.d2eta*U_ksi_forw - Q.dksideta*U_eta_forw), J) +
+                            np.minimum(b,0)*np.divide((Q.d2eta*U_ksi_forw - Q.dksideta*U_eta_back), J))
     # upwinding in y direction
-    ret += np.minimum(a,0)*(np.maximum(b,0)*np.divide((-Q.dksideta.dot(U_ksi_back) + Q.d2ksi.dot(U_eta_forw)), J) +
-                            np.minimum(b,0)*np.divide((-Q.dksideta.dot(U_ksi_back) + Q.d2ksi.dot(U_eta_back)), J)) \
-         + np.maximum(a,0)*(np.maximum(b,0)*np.divide((-Q.dksideta.dot(U_ksi_forw) + Q.d2ksi.dot(U_eta_forw)), J) +
-                            np.minimum(b,0)*np.divide((-Q.dksideta.dot(U_ksi_forw) + Q.d2ksi.dot(U_eta_back)), J))
+    ret += np.minimum(a,0)*(np.maximum(b,0)*np.divide((-Q.dksideta*U_ksi_back + Q.d2ksi*U_eta_forw), J) +
+                            np.minimum(b,0)*np.divide((-Q.dksideta*U_ksi_back + Q.d2ksi*U_eta_back), J)) \
+         + np.maximum(a,0)*(np.maximum(b,0)*np.divide((-Q.dksideta*U_ksi_forw + Q.d2ksi*U_eta_forw), J) +
+                            np.minimum(b,0)*np.divide((-Q.dksideta*U_ksi_forw + Q.d2ksi*U_eta_back), J))
     return ret
 
     
@@ -366,7 +366,7 @@ def ode_coupled_systems(t, y):
     """
     """
     global J 
-    # assign y, Q, (g?)
+    # assign U, Q, (g?)
     # U.val = y[:NN_]
     # Q.val = y[NN_:] 
     
