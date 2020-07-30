@@ -19,7 +19,7 @@ np.set_printoptions(edgeitems=6, suppress=True)
 i = 0
 
 #GLOBAL variables
-N_ = 50 # grid points
+N_ = 51 # grid points
 NN_ = N_*N_ # total number of points
 p_ = 2 # set as 1 or 2
 m_ = 3 # set as 3 (Van der Walls), or 4 (Casimir)
@@ -28,12 +28,12 @@ gamma_ = 0.1 # controls the extent of smoothing
 epsilon_ = 0
 beta_ = 0.15
 smoothing_iters_ = 4 # number of smoothing iterations per time step 
-lambd_ = 10 # quantifies the relative importance of electrostatic and elastic forces in the system
+lambd_ = 1 # quantifies the relative importance of electrostatic and elastic forces in the system
 endl_, endr_ = -1, 1
 d_ = endr_ - endl_ # domain size
 dksi_ = d_/(N_-1) # deta_ = dksi_
 dksi2_ = dksi_*dksi_
-Tf = 0.04 # solver should terminate before touchdown
+Tf = 0.4 # solver should terminate before touchdown
 
 #GLOBAL vectors, matrices
 ksi = np.linspace(endl_, endr_, N_)
@@ -47,11 +47,13 @@ J = None # Hessian (Jacobian) of Q
 #plotting in solver
 fig = plt.figure(figsize=(8,8))
 ax = fig.gca(projection='3d')
-ax.view_init(elev=30, azim=-120)
+ax.view_init(elev=30, azim=-160)
 ax.set_xlabel('x'); ax.set_ylabel('y'); ax.set_zlabel('u')
 ax.set_zlim3d(-1,.2)  
+ax.grid(False)
 ls = LightSource(azdeg=0, altdeg=65)
-surf = ax.plot_surface(ksiksi, etaeta, np.zeros((N_,N_)), cmap='viridis')
+surf = ax.plot_surface(ksiksi, etaeta, np.zeros((N_,N_)))
+mesh = ax.plot_wireframe(ksiksi, etaeta, np.zeros((N_,N_)))
 
 def main():
     global Q, Ibdy, M
@@ -62,13 +64,8 @@ def main():
     # U.val = np.zeros(NN_, dtype=float)
     U.val = -0.01*np.exp(-35*(ksiksi**2+etaeta**2)).reshape(NN_)
     
-    # termination event
-    touchdown.terminal=True
-    touchdown.direction=-1
     # ode solver
-    sol = solve_ivp(ode_coupled_systems,  (0,Tf), np.concatenate((U.val, Q.val)), method="BDF")
-    # ode solve without mesh adaptation
-    # sol = solve_ivp(ode_coupled_systems,  (0,Tf), U.val, events=touchdown)
+    sol = solve_ivp(ode_coupled_systems,  (0,Tf), np.concatenate((U.val, Q.val)), method="RK23")
     print(sol.message)
     
     plot = False
@@ -80,7 +77,7 @@ def main():
         ax.set_xlabel('x'); ax.set_ylabel('y'); ax.set_zlabel('u')
         ax.set_zlim3d(-1,.2)  
         ls = LightSource(azdeg=0, altdeg=65)
-        surf = ax.plot_surface(ksiksi, etaeta, np.zeros((N_,N_)), cmap='viridis')
+        surf = ax.plot_surface(ksiksi, etaeta, np.zeros((N_,N_)))
         plt.show()
         print("plotting a total of ", len(sol.t), " frames")
         for i in range(len(sol.t)):
@@ -327,8 +324,8 @@ def solve_PMA():
     """
     monitor = compute_and_smooth_monitor()
     q_rhs = np.sqrt(np.multiply(monitor, np.abs(J)))/alpha_
-    temp = dct(q_rhs.reshape(N_,N_), norm="ortho")
-    dQdt = idct(np.divide(temp,(1-gamma_*M.Leig)))
+    temp = dct(dct(q_rhs.reshape(N_,N_).T, norm="ortho").T, norm="ortho")
+    dQdt = idct(idct(np.divide(temp,(1-gamma_*M.Leig)).T, norm="ortho").T, norm="ortho") 
     return dQdt.reshape(NN_)
 
 def compute_rhs_pde(Qt):
@@ -374,8 +371,6 @@ def langrangian_term(Qt):
                             np.minimum(b,0)*np.divide((-Q.dksideta*U_ksi_forw + Q.d2ksi*U_eta_back), J))
     return ret
 
-def touchdown(t, y):
-    return min(y) + 0.5
 
 def ode_coupled_systems(t, y):
     """
@@ -398,19 +393,22 @@ def ode_coupled_systems(t, y):
     dudt = compute_rhs_pde(dQdt)
     
     # iter
-    global i, surf
+    global i, surf, mesh
     i += 1
     print("iteration : ", i, "{:e}".format(t))
     
     # Update plots
-    if i%1000 == 0:
+    pltevery = 1000
+    if i%pltevery == 0:
         surf.remove() 
         surf = ax.plot_surface(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), U.val.reshape(N_,N_), \
-                                color=(0,0.8,1),rstride=1, cstride=1, linewidth=0, \
+                                cmap=cm.coolwarm, rstride=1, cstride=1, linewidth=0, \
                                 antialiased=False,alpha=0.5)
+        mesh.remove()
+        mesh = ax.plot_wireframe(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), np.full((N_,N_),-1), linewidth=0.2)
         fig.canvas.draw()
         fig.canvas.flush_events()
-        fig.suptitle("frame: "+str(i/1000))
+        fig.suptitle("frame: "+str(i/pltevery))
     
     return np.concatenate((dudt, dQdt))
     # return dudt

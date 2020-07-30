@@ -29,14 +29,14 @@ gamma_ = 0.1 # controls the extent of smoothing
 epsilon_ = 0
 beta_ = 0.15
 smoothing_iters_ = 4 # number of smoothing iterations per time step 
-lambd_ = 10 # quantifies the relative importance of electrostatic and elastic forces in the system
+lambd_ = 1 # quantifies the relative importance of electrostatic and elastic forces in the system
 endl_, endr_ = -1, 1
 d_ = endr_ - endl_ # domain size
 dksi_ = d_/(N_-1) # deta_ = dksi_
 dksi2_ = dksi_*dksi_
 
-k = 5e-4
-Tf = 0.04
+k = 1e-3
+Tf = 0.3
 plot_bool = True
 
 #GLOBAL vectors, matrices, terms
@@ -53,11 +53,12 @@ dt = k
 
 #for plotting
 if plot_bool:
-    fig = plt.figure(figsize=(8,10))
+    fig = plt.figure(figsize=(8,6))
     ax = fig.gca(projection='3d')
     ax.view_init(elev=30, azim=-160)
     ax.set_xlabel('ksi'); ax.set_ylabel('eta'); ax.set_zlabel('u')
     ax.set_zlim3d(-1,.2)  
+    ax.grid(False)
     ls = LightSource(azdeg=50, altdeg=65)
     surf = ax.plot_surface(ksiksi, etaeta, np.zeros((N_,N_)))
     mesh = ax.plot_wireframe(ksiksi, etaeta, np.zeros((N_,N_)))
@@ -71,8 +72,14 @@ def main():
     U.new = np.zeros(NN_, dtype=float)
     # U.new = -0.01*np.exp(-35*(ksiksi**2+etaeta**2)).reshape(NN_)
     
+    # # compute derivatives
+    # compute_Q_spatial_ders()
+    # J = Q.d2ksi*Q.d2eta - Q.dksideta**2
+    # compute_u_spatial_ders()
+    
     current_time = 0
     while current_time < Tf:
+        
         # copy new solution to old
         U.val = U.new.copy()
         
@@ -102,7 +109,7 @@ def main():
         # plot every once in a while
         if plot_bool:
             surf.remove() 
-            surf = ax.plot_surface(ksiksi, etaeta, U.new.reshape(N_,N_), \
+            surf = ax.plot_surface(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), U.new.reshape(N_,N_), \
                                     cmap=cm.coolwarm, rstride=1, cstride=1, linewidth=0, \
                                     antialiased=False,alpha=0.5)
             mesh.remove()
@@ -150,7 +157,10 @@ def residual(u):
     new_rhs[Ibdy.Boundary] = 0
     # return
     return (u-U.val)/dt - (new_rhs + CN_term)/2
-    
+
+def loop_pma(i):
+    """
+    """
 
 def make_Ibdy():
     """
@@ -229,8 +239,6 @@ def compute_Q_spatial_ders():
     # 1st derivatives
     Q.dksi = M.dksiCentre.dot(Q.val); Q.dksi[Ibdy.Left] = -1; Q.dksi[Ibdy.Right] = 1;
     Q.deta = M.detaCentre.dot(Q.val); Q.deta[Ibdy.Bottom] = -1; Q.deta[Ibdy.Top] = 1;
-    print(Q.dksi.reshape(N_,N_))
-    print(Q.deta.reshape(N_,N_))
     # 2nd derivatives
     extra = 25/(6*dksi_)
     temp = np.zeros(NN_); temp[Ibdy.Left] = extra; temp[Ibdy.Right] = extra
@@ -387,8 +395,8 @@ def solve_PMA():
     """
     monitor = compute_and_smooth_monitor()
     q_rhs = np.sqrt(np.multiply(monitor, np.abs(J)))/alpha_
-    temp = dct(q_rhs.reshape(N_,N_), norm="ortho")
-    dQdt = idct(np.divide(temp,(1-gamma_*M.Leig)))
+    temp = dct(dct(q_rhs.reshape(N_,N_).T, norm="ortho").T, norm="ortho")
+    dQdt = idct(idct(np.divide(temp,(1-gamma_*M.Leig)).T, norm="ortho").T, norm="ortho") 
     Q.dt = dQdt.reshape(NN_)
 
 def compute_rhs_pde():
