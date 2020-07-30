@@ -20,7 +20,7 @@ np.set_printoptions(edgeitems=6, suppress=True)
 i = 0
 
 #GLOBAL variables
-N_ = 50 # grid points
+N_ = 40 # grid points
 NN_ = N_*N_ # total number of points
 p_ = 2 # set as 1 or 2
 m_ = 3 # set as 3 (Van der Walls), or 4 (Casimir)
@@ -35,10 +35,11 @@ d_ = endr_ - endl_ # domain size
 dksi_ = d_/(N_-1) # deta_ = dksi_
 dksi2_ = dksi_*dksi_
 
-k = 2e-4
+k = 5e-4
 Tf = 0.04
+plot_bool = True
 
-#GLOBAL vectors, matrices
+#GLOBAL vectors, matrices, terms
 ksi = np.linspace(endl_, endr_, N_)
 ksiksi, etaeta = np.meshgrid(ksi, ksi) # square grid
 Ibdy = lambda:0 # information on indices (boundary, interior, corners)
@@ -50,15 +51,16 @@ CN_term = None # holds Crank Nicholson previous rhs solution
 CN_term_new = None # holds Crank Nicholson new rhs solution
 dt = k
 
-#plotting in solver
-fig = plt.figure(figsize=(8,8))
-ax = fig.gca(projection='3d')
-ax.view_init(elev=20, azim=-150)
-ax.set_xlabel('x'); ax.set_ylabel('y'); ax.set_zlabel('u')
-ax.set_zlim3d(-1,.2)  
-ls = LightSource(azdeg=50, altdeg=65)
-surf = ax.plot_surface(ksiksi, etaeta, np.zeros((N_,N_)), cmap='viridis')
-mesh = ax.plot_wireframe(ksiksi, etaeta, np.zeros((N_,N_)))
+#for plotting
+if plot_bool:
+    fig = plt.figure(figsize=(8,10))
+    ax = fig.gca(projection='3d')
+    ax.view_init(elev=30, azim=-160)
+    ax.set_xlabel('ksi'); ax.set_ylabel('eta'); ax.set_zlabel('u')
+    ax.set_zlim3d(-1,.2)  
+    ls = LightSource(azdeg=50, altdeg=65)
+    surf = ax.plot_surface(ksiksi, etaeta, np.zeros((N_,N_)))
+    mesh = ax.plot_wireframe(ksiksi, etaeta, np.zeros((N_,N_)))
 
 def main():
     global Q, Ibdy, M, J, CN_term, surf, mesh
@@ -98,13 +100,13 @@ def main():
         current_time += dt
         
         # plot every once in a while
-        if True:
+        if plot_bool:
             surf.remove() 
             surf = ax.plot_surface(ksiksi, etaeta, U.new.reshape(N_,N_), \
                                     cmap=cm.coolwarm, rstride=1, cstride=1, linewidth=0, \
                                     antialiased=False,alpha=0.5)
             mesh.remove()
-            mesh = ax.plot_wireframe(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), np.full((N_,N_),-1))
+            mesh = ax.plot_wireframe(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), np.full((N_,N_),-1), linewidth=0.2)
             fig.canvas.draw()
             fig.canvas.flush_events()
             fig.suptitle("time= "+str(current_time)+", dt= "+str(dt))
@@ -225,8 +227,10 @@ def compute_Q_spatial_ders():
     compute spatial (ksi, eta) derivatives of the mesh potetial
     """
     # 1st derivatives
-    Q.dksi = M.dksiCentre.dot(Q.val)
-    Q.deta = M.detaCentre.dot(Q.val)
+    Q.dksi = M.dksiCentre.dot(Q.val); Q.dksi[Ibdy.Left] = -1; Q.dksi[Ibdy.Right] = 1;
+    Q.deta = M.detaCentre.dot(Q.val); Q.deta[Ibdy.Bottom] = -1; Q.deta[Ibdy.Top] = 1;
+    print(Q.dksi.reshape(N_,N_))
+    print(Q.deta.reshape(N_,N_))
     # 2nd derivatives
     extra = 25/(6*dksi_)
     temp = np.zeros(NN_); temp[Ibdy.Left] = extra; temp[Ibdy.Right] = extra
