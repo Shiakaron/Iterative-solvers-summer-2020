@@ -12,10 +12,9 @@ from scipy.optimize import newton_krylov
 # from scipy.linalg import matrix_power
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
-# from matplotlib import cm
+from matplotlib import cm
 # from matplotlib.ticker import LinearLocator, FormatStrFormatter
 from matplotlib.colors import LightSource
-import math
 
 np.set_printoptions(edgeitems=6, suppress=True)
 i = 0
@@ -36,8 +35,8 @@ d_ = endr_ - endl_ # domain size
 dksi_ = d_/(N_-1) # deta_ = dksi_
 dksi2_ = dksi_*dksi_
 
-k = 1e-4
-Tf = 0.04 # solver should terminate before touchdown
+k = 2e-4
+Tf = 0.04
 
 #GLOBAL vectors, matrices
 ksi = np.linspace(endl_, endr_, N_)
@@ -49,14 +48,15 @@ U = lambda:0 # solution and its derivatives
 J = None # Hessian (Jacobian) of Q
 CN_term = None # holds Crank Nicholson previous rhs solution
 CN_term_new = None # holds Crank Nicholson new rhs solution
+dt = k
 
 #plotting in solver
 fig = plt.figure(figsize=(8,8))
 ax = fig.gca(projection='3d')
-ax.view_init(elev=30, azim=-120)
+ax.view_init(elev=20, azim=-150)
 ax.set_xlabel('x'); ax.set_ylabel('y'); ax.set_zlabel('u')
 ax.set_zlim3d(-1,.2)  
-ls = LightSource(azdeg=0, altdeg=65)
+ls = LightSource(azdeg=50, altdeg=65)
 surf = ax.plot_surface(ksiksi, etaeta, np.zeros((N_,N_)), cmap='viridis')
 
 def main():
@@ -68,9 +68,8 @@ def main():
     U.new = np.zeros(NN_, dtype=float)
     # U.new = -0.01*np.exp(-35*(ksiksi**2+etaeta**2)).reshape(NN_)
     
-    Nsteps = math.ceil(Tf/k) # ESTIMATE NUMBER OF TIME STEPS REQUIRED
-    # plotSteps = round(1/k) # PLOT ROUGHLY EVERY ONE TIME UNIT
-    for s in range(Nsteps):
+    current_time = 0
+    while current_time < Tf:
         # copy new solution to old
         U.val = U.new.copy()
         
@@ -78,6 +77,9 @@ def main():
         compute_Q_spatial_ders()
         J = Q.d2ksi*Q.d2eta - Q.dksideta**2
         compute_u_spatial_ders()
+        
+        #time step
+        dt = compute_g()*k
         
         # solve PMA for dQdt
         solve_PMA()
@@ -89,17 +91,20 @@ def main():
         U.new = newton_krylov(residual, U.val, verbose=0)
         
         # update mesh using explicit scheme
-        Q.val += k*Q.dt
+        Q.val += dt*Q.dt
+        
+        # update current time
+        current_time += dt
         
         # plot every once in a while
         if True:
             surf.remove() 
             surf = ax.plot_surface(ksiksi, etaeta, U.new.reshape(N_,N_), \
-                                    color=(0,0.8,1),rstride=1, cstride=1, linewidth=0, \
+                                    cmap=cm.coolwarm, rstride=1, cstride=1, linewidth=0, \
                                     antialiased=False,alpha=0.5)
             fig.canvas.draw()
             fig.canvas.flush_events()
-            fig.suptitle("time: "+str((s+1)*k))
+            fig.suptitle("time= "+str(current_time)+", dt= "+str(dt))
     
 def residual(u):
     """
@@ -139,7 +144,7 @@ def residual(u):
                             np.minimum(b,0)*np.divide((-Q.dksideta*U_ksi_forw + Q.d2ksi*U_eta_back), J)) 
     new_rhs[Ibdy.Boundary] = 0
     # return
-    return (u-U.val)/k - (new_rhs + CN_term)/2
+    return (u-U.val)/dt - (new_rhs + CN_term)/2
     
 
 def make_Ibdy():
@@ -421,6 +426,12 @@ def lagrangian_term():
          + np.maximum(a,0)*(np.maximum(b,0)*np.divide((-Q.dksideta*U_ksi_forw + Q.d2ksi*U_eta_forw), J) +
                             np.minimum(b,0)*np.divide((-Q.dksideta*U_ksi_forw + Q.d2ksi*U_eta_back), J))
     return ret
+
+def compute_g():
+    if epsilon_ == 0:
+        return min((1+U.val)**3)
+    else:
+        return 1
 
 if (__name__ == "__main__"):
     main()
