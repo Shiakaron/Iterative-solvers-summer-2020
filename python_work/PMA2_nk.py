@@ -58,9 +58,10 @@ ax.set_xlabel('x'); ax.set_ylabel('y'); ax.set_zlabel('u')
 ax.set_zlim3d(-1,.2)  
 ls = LightSource(azdeg=50, altdeg=65)
 surf = ax.plot_surface(ksiksi, etaeta, np.zeros((N_,N_)), cmap='viridis')
+mesh = ax.plot_wireframe(ksiksi, etaeta, np.zeros((N_,N_)))
 
 def main():
-    global Q, Ibdy, M, J, CN_term, surf
+    global Q, Ibdy, M, J, CN_term, surf, mesh
     # initialise Q, Ibdy, M, U
     Q.val = np.reshape(0.5*ksiksi**2 + 0.5*etaeta**2, NN_) # mesh potential
     make_Ibdy()
@@ -102,6 +103,8 @@ def main():
             surf = ax.plot_surface(ksiksi, etaeta, U.new.reshape(N_,N_), \
                                     cmap=cm.coolwarm, rstride=1, cstride=1, linewidth=0, \
                                     antialiased=False,alpha=0.5)
+            mesh.remove()
+            mesh = ax.plot_wireframe(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), np.full((N_,N_),-1))
             fig.canvas.draw()
             fig.canvas.flush_events()
             fig.suptitle("time= "+str(current_time)+", dt= "+str(dt))
