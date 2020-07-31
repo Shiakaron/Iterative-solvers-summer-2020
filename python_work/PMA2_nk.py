@@ -20,7 +20,7 @@ np.set_printoptions(edgeitems=6, suppress=True)
 i = 0
 
 #GLOBAL variables
-N_ = 40 # grid points
+N_ = 51 # grid points
 NN_ = N_*N_ # total number of points
 p_ = 2 # set as 1 or 2
 m_ = 3 # set as 3 (Van der Walls), or 4 (Casimir)
@@ -135,25 +135,25 @@ def residual(u):
         new_rhs += beta_*beta_*(u.xx + u.yy)
     else: # p == 2
         v = u_xx + u_yy
-        v_xx, v_yy = Laplace_operator(v.reshape(N_,N_), M.dksiCentre*v, M.detaCentre*v)
+        v_xx, v_yy = Laplace_operator(v.reshape(N_,N_), M.dksiCentre.dot(v), M.detaCentre.dot(v))
         new_rhs -= beta_*beta_*(v_xx + v_yy)
-    # compute lagrangian term
-    a = M.dksiCentre.dot(Q.dt)
-    b = M.detaCentre.dot(Q.dt)
-    U_ksi_forw = M.dksiForw.dot(u)
-    U_ksi_back = M.dksiBack.dot(u)
-    U_eta_forw = M.detaForw.dot(u)
-    U_eta_back = M.detaBack.dot(u)
-    # upwinding in x direction
-    new_rhs += np.minimum(a,0)*(np.maximum(b,0)*np.divide((Q.d2eta*U_ksi_back - Q.dksideta*U_eta_forw), J) +
-                            np.minimum(b,0)*np.divide((Q.d2eta*U_ksi_back - Q.dksideta*U_eta_back), J)) \
-         + np.maximum(a,0)*(np.maximum(b,0)*np.divide((Q.d2eta*U_ksi_forw - Q.dksideta*U_eta_forw), J) +
-                            np.minimum(b,0)*np.divide((Q.d2eta*U_ksi_forw - Q.dksideta*U_eta_back), J))
-    # upwinding in y direction
-    new_rhs += np.minimum(a,0)*(np.maximum(b,0)*np.divide((-Q.dksideta*U_ksi_back + Q.d2ksi*U_eta_forw), J) +
-                            np.minimum(b,0)*np.divide((-Q.dksideta*U_ksi_back + Q.d2ksi*U_eta_back), J)) \
-         + np.maximum(a,0)*(np.maximum(b,0)*np.divide((-Q.dksideta*U_ksi_forw + Q.d2ksi*U_eta_forw), J) +
-                            np.minimum(b,0)*np.divide((-Q.dksideta*U_ksi_forw + Q.d2ksi*U_eta_back), J)) 
+    # # compute lagrangian term
+    # a = M.dksiCentre.dot(Q.dt)
+    # b = M.detaCentre.dot(Q.dt)
+    # U_ksi_forw = M.dksiForw.dot(u)
+    # U_ksi_back = M.dksiBack.dot(u)
+    # U_eta_forw = M.detaForw.dot(u)
+    # U_eta_back = M.detaBack.dot(u)
+    # # upwinding in x direction
+    # new_rhs += np.minimum(a,0)*(np.maximum(b,0)*np.divide((Q.d2eta*U_ksi_back - Q.dksideta*U_eta_forw), J) + 
+    #                             np.minimum(b,0)*np.divide((Q.d2eta*U_ksi_back - Q.dksideta*U_eta_back), J)) \
+    #          + np.maximum(a,0)*(np.maximum(b,0)*np.divide((Q.d2eta*U_ksi_forw - Q.dksideta*U_eta_forw), J) +
+    #                             np.minimum(b,0)*np.divide((Q.d2eta*U_ksi_forw - Q.dksideta*U_eta_back), J))
+    # # upwinding in y direction
+    # new_rhs += np.minimum(a,0)*(np.maximum(b,0)*np.divide((-Q.dksideta*U_ksi_back + Q.d2ksi*U_eta_forw), J) +
+    #                             np.minimum(b,0)*np.divide((-Q.dksideta*U_ksi_back + Q.d2ksi*U_eta_back), J)) \
+    #          + np.maximum(a,0)*(np.maximum(b,0)*np.divide((-Q.dksideta*U_ksi_forw + Q.d2ksi*U_eta_forw), J) +
+    #                             np.minimum(b,0)*np.divide((-Q.dksideta*U_ksi_forw + Q.d2ksi*U_eta_back), J)) 
     new_rhs[Ibdy.Boundary] = 0
     # return
     return (u-U.val)/dt - (new_rhs + CN_term)/2
@@ -204,7 +204,7 @@ def make_M():
     
     # C - upwinding scheme
     #forward
-    temp = diags([-3,4,-1], [0,1,2], shape=(N_,N_), format="lil")
+    temp = diags([-3, 4,-1], [0,1,2], shape=(N_,N_), format="lil")
     temp[-1,-3:] = [1, -4, 3]
     temp[-2,-2:] = [-2, 2]
     temp - csc_matrix(temp/(2*dksi_))
@@ -212,7 +212,7 @@ def make_M():
     M.detaForw = kron(temp, eye) # df/deta forward difference
     
     #backward
-    temp = diags([1,-4,3], [-2,1,0], shape=(N_,N_), format="lil")
+    temp = diags([1,-4,3], [-2,-1,0], shape=(N_,N_), format="lil")
     temp[0,:3] = [-3, 4, -1]
     temp[1,:2] = [-2, 2]
     temp - csc_matrix(temp/(2*dksi_))
@@ -275,65 +275,68 @@ def Laplace_operator(v, v_dksi, v_deta):
     A11 = np.reshape(np.divide(Q.dksideta**2 + Q.d2eta**2, J), (N_, N_))
     A22 = np.reshape(np.divide(Q.dksideta**2 + Q.d2ksi**2, J), (N_, N_))
     A12 = -np.divide(np.multiply(Q.dksideta, Q.d2ksi + Q.d2eta), J)
-    v_xx = np.zeros((N_, N_)); v_yy = np.zeros((N_, N_))
+    v_xx = np.zeros((N_, N_), dtype=float); v_yy = np.zeros((N_, N_), dtype=float)
     
     # B.1 : (A11*u_dksi)_ksi, (A22*u_deta)_eta
-    # interior points 
-    r = np.arange(3,N_-3) 
-    v_xx[:,r] = (4*np.multiply(A11[:,r-1], (v[:,r-3] - 8*v[:,r-2] + 8*v[:,r] - v[:,r+1])) 
-                  -np.multiply((-A11[:,r-2] + 9*A11[:,r-1] + 9*A11[:,r] - A11[:,r+1]), 
-                               (v[:,r-2] - 27*v[:,r-1] + 27*v[:,r] - v[:,r+1])) 
-                  +np.multiply((-A11[:,r-1] + 9*A11[:,r] + 9*A11[:,r+1] - A11[:,r+2]), 
-                               (v[:,r-1] - 27*v[:,r] + 27*v[:,r+1] - v[:,r+2]))
-                  -4*np.multiply(A11[:,r+1], (v[:,r-1] - 8*v[:,r] + 8*v[:,r+2] - v[:,r+3])))/(288*dksi2_)
+    # interior points  (checked 31/7 - all good)
+    v_xx[:,3:-3] = (4*np.multiply(A11[:,2:-4], (v[:,:-6] - 8*v[:,1:-5] + 8*v[:,3:-3] - v[:,4:-2])) 
+                  - np.multiply((- A11[:,1:-5] + 9*A11[:,2:-4] + 9*A11[:,3:-3] - A11[:,4:-2]), 
+                               (v[:,1:-5] - 27*v[:,2:-4] + 27*v[:,3:-3] - v[:,4:-2])) 
+                  + np.multiply((- A11[:,2:-4] + 9*A11[:,3:-3] + 9*A11[:,4:-2] - A11[:,5:-1]), 
+                               (v[:,2:-4] - 27*v[:,3:-3] + 27*v[:,4:-2] - v[:,5:-1]))
+                  - 4*np.multiply(A11[:,4:-2], (v[:,2:-4] - 8*v[:,3:-3] + 8*v[:,5:-1] - v[:,6:])))/(288*dksi2_)
     
-    v_yy[r,:] = (4*np.multiply(A22[r-1,:], (v[r-3,:] - 8*v[r-2,:] + 8*v[r,:] - v[r+1,:]))
-                  -np.multiply((-A22[r-2,:] + 9*A22[r-1,:] + 9*A22[r,:] - A22[r+1,:]), 
-                               (v[r-2,:] - 27*v[r-1,:] + 27*v[r,:] - v[r+1,:]))
-                  +np.multiply((-A22[r-1,:] + 9*A22[r,:] + 9*A22[r+1,:] - A22[r+2,:]), 
-                               (v[r-1,:] - 27*v[r,:] + 27*v[r+1,:] - v[r+2,:]))
-                  -4*np.multiply(A22[r+1,:], (v[r-1,:] - 8*v[r,:] + 8*v[r+2,:] - v[r+3,:])))/(288*dksi2_)
+    v_yy[3:-3,:] = (4*np.multiply(A22[2:-4,:], (v[:-6,:] - 8*v[1:-5,:] + 8*v[3:-3,:] - v[4:-2,:]))
+                  - np.multiply((- A22[1:-5,:] + 9*A22[2:-4,:] + 9*A22[3:-3,:] - A22[4:-2,:]), 
+                               (v[1:-5,:] - 27*v[2:-4,:] + 27*v[3:-3,:] - v[4:-2,:]))
+                  + np.multiply((- A22[2:-4,:] + 9*A22[3:-3,:] + 9*A22[4:-2,:] - A22[5:-1,:]), 
+                               (v[2:-4,:] - 27*v[3:-3,:] + 27*v[4:-2,:] - v[5:-1,:]))
+                  - 4*np.multiply(A22[4:-2,:], (v[2:-4,:] - 8*v[3:-3,:] + 8*v[5:-1,:] - v[6:,:])))/(288*dksi2_)
     
-    # next-to boundary points
+    # next-to boundary points (checked 31/7 - reversed sign of components of expressions for [:,-2] and [-2,:], this shouldn't 
+    # actually change anything.)
     v_xx[:,1] = np.multiply(A11[:,1], (10*v[:,0] - 15*v[:,1] - 4*v[:,2] + 14*v[:,3] - 6*v[:,4] + v[:,5]))/(12*dksi2_) \
-        + np.multiply((-3*v[:,0] - 10*v[:,1] + 18*v[:,2] - 6*v[:,3] + v[:,4]), 
-                      (-3*A11[:,0] - 10*A11[:,1] + 18*A11[:,2] - 6*A11[:,3] + A11[:,4]))/(144*dksi2_)
+                + np.multiply((-3*v[:,0] - 10*v[:,1] + 18*v[:,2] - 6*v[:,3] + v[:,4]), 
+                              (-3*A11[:,0] - 10*A11[:,1] + 18*A11[:,2] - 6*A11[:,3] + A11[:,4]))/(144*dksi2_)
         
     v_yy[1,:] = np.multiply(A22[1,:], (10*v[0,:] - 15*v[1,:] - 4*v[2,:] + 14*v[3,:] - 6*v[4,:] + v[5,:]))/(12*dksi2_) \
-        + np.multiply((-3*v[0,:] - 10*v[1,:] + 18*v[2,:] - 6*v[3,:] + v[4,:]), 
-                      (-3*A22[0,:] - 10*A22[1,:] + 18*A22[2,:] - 6*A22[3,:] + A22[4,:]))/(144*dksi2_)
+                + np.multiply((-3*v[0,:] - 10*v[1,:] + 18*v[2,:] - 6*v[3,:] + v[4,:]), 
+                              (-3*A22[0,:] - 10*A22[1,:] + 18*A22[2,:] - 6*A22[3,:] + A22[4,:]))/(144*dksi2_)
     
     v_xx[:,-2] = np.multiply(A11[:,-2], (10*v[:,-1] - 15*v[:,-2] - 4*v[:,-3] + 14*v[:,-4] - 6*v[:,-5] + v[:,-6]))/(12*dksi2_) \
-        + np.multiply((-3*v[:,-1] - 10*v[:,-2] + 18*v[:,-3] - 6*v[:,-4] + v[:,-5]), 
-                      (-3*A11[:,-1] - 10*A11[:,-2] + 18*A11[:,-3] - 6*A11[:,-4] + A11[:,-5]))/(144*dksi2_)
+                + np.multiply((3*v[:,-1] + 10*v[:,-2] - 18*v[:,-3] + 6*v[:,-4] - v[:,-5]), 
+                              (3*A11[:,-1] + 10*A11[:,-2] - 18*A11[:,-3] + 6*A11[:,-4] - A11[:,-5]))/(144*dksi2_)
         
     v_yy[-2,:] = np.multiply(A22[-2,:], (10*v[-1,:] - 15*v[-2,:] - 4*v[-3,:] + 14*v[-4,:] - 6*v[-5,:] + v[-6,:]))/(12*dksi2_) \
-        + np.multiply((-3*v[-1,:] - 10*v[-2,:] + 18*v[-3,:] - 6*v[-4,:] + v[-5,:]), 
-                      (-3*A22[-1,:] - 10*A22[-2,:] + 18*A22[-3,:] - 6*A22[-4,:] + A22[-5,:]))/(144*dksi2_)
+                + np.multiply((3*v[-1,:] + 10*v[-2,:] - 18*v[-3,:] + 6*v[-4,:] - v[-5,:]), 
+                              (3*A22[-1,:] + 10*A22[-2,:] - 18*A22[-3,:] + 6*A22[-4,:] - A22[-5,:]))/(144*dksi2_)
         
-    # next-to-next-to boundary points
-    v_xx[:,2] = np.multiply(A11[:,2], (-v[:,0] + 16*v[:,1] - 30*v[:,2] + 16*v[:,3] - v[:,4]))/(12*dksi2_) \
-        + np.multiply((v[:,0] - 8*v[:,1] + 8*v[:,3] - v[:,4]), (A11[:,0] - 8*A11[:,1] + 8*A11[:,3] - A11[:,4]))/(144*dksi2_)
+    # next-to-next-to boundary points (checked 31/7 - adjasted ordering for components of [:,-3] and [-3,:]
+    # to ascending order, this shouldn't actually change anything. Also FIXED A11->A22 for the appropriate expressions.)
+    v_xx[:,2] = np.multiply(A11[:,2], (- v[:,0] + 16*v[:,1] - 30*v[:,2] + 16*v[:,3] - v[:,4]))/(12*dksi2_) \
+                + np.multiply((v[:,0] - 8*v[:,1] + 8*v[:,3] - v[:,4]), 
+                              (A11[:,0] - 8*A11[:,1] + 8*A11[:,3] - A11[:,4]))/(144*dksi2_)
         
-    v_yy[2,:] = np.multiply(A22[2,:], (-v[0,:] + 16*v[1,:] - 30*v[2,:] + 16*v[3,:] - v[4,:]))/(12*dksi2_) \
-        + np.multiply((v[0,:] - 8*v[1,:] + 8*v[3,:] - v[4,:]), (A11[0,:] - 8*A11[1,:] + 8*A11[3,:] - A11[4,:]))/(144*dksi2_)
+    v_yy[2,:] = np.multiply(A22[2,:], (- v[0,:] + 16*v[1,:] - 30*v[2,:] + 16*v[3,:] - v[4,:]))/(12*dksi2_) \
+                + np.multiply((v[0,:] - 8*v[1,:] + 8*v[3,:] - v[4,:]), 
+                              (A22[0,:] - 8*A22[1,:] + 8*A22[3,:] - A22[4,:]))/(144*dksi2_)
         
-    v_xx[:,-3] = np.multiply(A11[:,-3], (-v[:,-1] + 16*v[:,-2] - 30*v[:,-3] + 16*v[:,-4] - v[:,-5]))/(12*dksi2_) \
-        + np.multiply((v[:,-1] - 8*v[:,-2] + 8*v[:,-4] - v[:,-5]), 
-                      (A11[:,-1] - 8*A11[:,-2] + 8*A11[:,-4] - A11[:,-5]))/(144*dksi2_)
+    v_xx[:,-3] = np.multiply(A11[:,-3], (- v[:,-1] + 16*v[:,-2] - 30*v[:,-3] + 16*v[:,-4] - v[:,-5]))/(12*dksi2_) \
+                + np.multiply((v[:,-5] - 8*v[:,-4] + 8*v[:,-2] - v[:,-1]), 
+                              (A11[:,-5] - 8*A11[:,-4] + 8*A11[:,-2] - A11[:,-1]))/(144*dksi2_)
     
-    v_yy[-3,:] = np.multiply(A22[-3,:], (-v[-1,:] + 16*v[-2,:] - 30*v[-3,:] + 16*v[-4,:] - v[-5,:]))/(12*dksi2_) \
-        + np.multiply((v[-1,:] - 8*v[-2,:] + 8*v[-4,:] - v[-5,:]), 
-                      (A11[-1,:] - 8*A11[-2,:] + 8*A11[-4,:] - A11[-5,:]))/(144*dksi2_)
+    v_yy[-3,:] = np.multiply(A22[-3,:], (- v[-1,:] + 16*v[-2,:] - 30*v[-3,:] + 16*v[-4,:] - v[-5,:]))/(12*dksi2_) \
+                + np.multiply((v[-5,:] - 8*v[-4,:] + 8*v[-2,:] - v[-1,:]), 
+                              (A22[-5,:] - 8*A22[-4,:] + 8*A22[-2,:] - A22[-1,:]))/(144*dksi2_)
     
-    # B.2 (A12*u_deta)_ksi, (A12*u_dksi)_eta
+    # B.2 (A12*u_deta)_ksi, (A12*u_dksi)_eta (checked 31/7 - fixed major mistakes)
     temp = M.dksiCentre.dot(np.multiply(A12, v_deta))
-    temp[Ibdy.Boundary] = 0
+    temp[Ibdy.Left] = 0; temp[Ibdy.Right] = 0
     v_xx = np.reshape(v_xx, NN_)
     v_xx += temp
     
-    temp = M.dksiCentre.dot(np.multiply(A12, v_dksi))
-    temp[Ibdy.Boundary] = 0
+    temp = M.detaCentre.dot(np.multiply(A12, v_dksi))
+    temp[Ibdy.Top] = 0; temp[Ibdy.Bottom] = 0
     v_yy = np.reshape(v_yy, NN_)
     v_yy += temp
     
@@ -361,7 +364,7 @@ def compute_and_smooth_monitor():
         if p_ == 1:
             temp = (1 + U.dx**2 + U.dy**2).reshape((N_,N_))
         else:
-            temp = np.sqrt(np.abs(U.d2x + U.d2y)).reshape((N_,N_))
+            temp = np.sqrt(np.abs(U.xx + U.yy)).reshape((N_,N_))
     
     # smoothing           
     # fourth-order filter
@@ -410,9 +413,7 @@ def compute_rhs_pde():
         dudt += beta_*beta_*(U.xx + U.yy)
     else: # p == 2
         v = U.xx + U.yy
-        v_dksi = M.dksiCentre*v
-        v_deta = M.detaCentre*v
-        v_xx, v_yy = Laplace_operator(v.reshape(N_,N_), v_dksi, v_deta)
+        v_xx, v_yy = Laplace_operator(v.reshape(N_,N_), M.dksiCentre.dot(v), M.detaCentre.dot(v))
         dudt -= beta_*beta_*(v_xx + v_yy)
     dudt[Ibdy.Boundary] = 0
     return dudt
