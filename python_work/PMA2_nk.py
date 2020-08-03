@@ -408,7 +408,7 @@ def compute_rhs_pde():
     where the lagrangian_term = Grad_x{u} dot Grad_ksi{Qt}.
     """
     dudt = - lambd_/((1+U.val)**2) + lambd_*(epsilon_**(m_-2))/((1+U.val)**m_)
-    dudt += lagrangian_term()
+    # dudt += lagrangian_term()
     if p_ == 1:
         dudt += beta_*beta_*(U.xx + U.yy)
     else: # p == 2

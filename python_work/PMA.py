@@ -61,11 +61,11 @@ def main():
     Q.val = np.reshape(0.5*ksiksi**2 + 0.5*etaeta**2, NN_) # mesh potential
     make_Ibdy()
     make_M()
-    # U.val = np.zeros(NN_, dtype=float)
-    U.val = -0.01*np.exp(-35*(ksiksi**2+etaeta**2)).reshape(NN_)
+    U.val = np.zeros(NN_, dtype=float)
+    # U.val = -0.01*np.exp(-35*(ksiksi**2+etaeta**2)).reshape(NN_)
     
     # ode solver
-    sol = solve_ivp(ode_coupled_systems,  (0,Tf), np.concatenate((U.val, Q.val)), method="RK23")
+    sol = solve_ivp(ode_coupled_systems,  (0,Tf), np.concatenate((U.val, Q.val)), method="BDF")
     print(sol.message)
     
     plot = False
@@ -338,7 +338,7 @@ def compute_rhs_pde(Qt):
     where the Langrangian_term = Grad_x{u} dot Grad_ksi{Qt}.
     """
     dudt = - lambd_/((1+U.val)**2) + lambd_*(epsilon_**(m_-2))/((1+U.val)**m_)
-    dudt += langrangian_term(Qt)
+    # dudt += langrangian_term(Qt)
     if p_ == 1:
         dudt += beta_*beta_*(U.xx + U.yy)
     else: # p == 2
