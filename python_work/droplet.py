@@ -45,6 +45,10 @@ Q = lambda:0 # mesh potential and all its derivatives
 U = lambda:0 # solution and its derivatives
 J = None # Hessian (Jacobian) of Q
 
+#writing to or reading from file?
+tofile = True
+fromfile = not tofile
+
 # for plotting
 plot3d_bool = True
 fig = plt.figure(figsize=(16,8))
@@ -79,7 +83,11 @@ def main():
     make_Ibdy()
     make_M()
     U.new = np.full(NN_, epsilon_)
-    initialise_droplet(dtmesh_, 1)
+    
+    if fromfile:
+        U.val, Q.val = read_from_file("initdrop_R_"+str(R_)+"_N_"+str(N_)+"_e_"+str(epsilon_)+"_a_"+str(a_)+".txt")
+    else:
+        initialise_droplet(dtmesh_, 1)
 
 def solve_PMA():
     """
@@ -139,23 +147,30 @@ def initialise_droplet(dtmesh, loops):
             mesh2 = ax2.plot_wireframe(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), np.zeros((N_,N_)), linewidth=0.2, rcount=N_, ccount=N_)
             fig.canvas.draw()
             fig.canvas.flush_events() 
+    U.val = U.new.copy()
     print("initialisation complete")
     
+    # write values to a file for quick access??
+    if tofile:
+        write_to_file("initdrop_R_"+str(R_)+"_N_"+str(N_)+"_eps_"+str(epsilon_)+"_a_"+str(a_)+".txt")
+
+def check_mesh_steady_state(dt):
     # to check steady state of the mesh
-    U.val = U.new.copy()
+    global J, V_, surf, mesh, mesh2
+    iters = 1000
     compute_Q_spatial_ders()
     J = Q.d2ksi*Q.d2eta - Q.dksideta**2
     compute_u_spatial_ders()
-    for i in range(1000):
+    for i in range(iters):
         #solve PMA and find differences between updated mesh before updating 
         solve_PMA()
-        Qnew = Q.val + dtmesh*Q.dt
+        Qnew = Q.val + dt*Q.dt
         # 1st derivatives
         Qdksi = M.dksiCentre.dot(Qnew); Qdksi[Ibdy.Left] = endl_; Qdksi[Ibdy.Right] = endr_;
         Qdeta = M.detaCentre.dot(Qnew); Qdeta[Ibdy.Bottom] = endl_; Qdeta[Ibdy.Top] = endr_;
         diff_ksi = Qdksi - Q.dksi; diff_eta = Qdeta - Q.deta
         diff_squared = np.sqrt(diff_ksi**2 + diff_eta**2)
-        print((i+1), " / ", 100, ": ", diff_squared.max())
+        print((i+1), " / ", iters, ": ", diff_squared.max())
         Q.val = Qnew.copy()
         # plot every once in a while
         if plot3d_bool:
@@ -172,7 +187,18 @@ def initialise_droplet(dtmesh, loops):
                                        rcount=N_, ccount=N_)
             fig.canvas.draw()
             fig.canvas.flush_events() 
-     
+  
+def write_to_file(filename):
+    file = open(filename, "w") 
+    for i in range(NN_):
+        # U.val Q.val 
+        file.write(str(U.val[i]) + " " + str(Q.val[i]) + "\n")
+    file.close()
+    
+def read_from_file(filename):
+    """
+    """
+
 def Laplace_operator(v, v_dksi, v_deta):
     """    
     L(v) = v_xx + v_yy = J^-1 * div_ksi { J^-1 * A * grad_ksi (v) }
