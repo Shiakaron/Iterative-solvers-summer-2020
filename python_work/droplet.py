@@ -95,12 +95,13 @@ def H(psi):
     return np.where(ret > 0, ret, 0)
 
 def G(x):
-    ret = R_ + np.log((1+np.exp(-2*a_*(x+R_)))/(1+np.exp(-2*a_*(x-R_))))/(2*a_)
     return R_ + np.log((1+np.exp(-2*a_*(x+R_)))/(1+np.exp(-2*a_*(x-R_))))/(2*a_)
         
 def loop_pma(dtmesh, loops):
+    global J
     dtloop = dtmesh/loops
-    for i in range(loops):
+    Q.val += dtloop*Q.dt
+    for i in range(1,loops):
         compute_Q_spatial_ders()
         J = Q.d2ksi*Q.d2eta - Q.dksideta**2
         solve_PMA()
@@ -122,15 +123,13 @@ def initialise_droplet(dtmesh, loops):
         loop_pma(dtmesh, loops)
         # plot every once in a while
         if plot3d_bool:
+            # solution
             surf.remove() 
             surf = ax.plot_surface(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), U.new.reshape(N_,N_), \
                                     cmap=cm.coolwarm, rstride=1, cstride=1, linewidth=0, \
                                     antialiased=False,alpha=0.5)
             mesh.remove()
             mesh = ax.plot_wireframe(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), np.full((N_,N_),-3), linewidth=0.2)
-            fig.canvas.draw()
-            fig.canvas.flush_events()  
-            plt.pause(0.1)
             # mesh
             mesh2.remove()
             mesh2 = ax2.plot_wireframe(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), np.zeros((N_,N_)), linewidth=0.2)
