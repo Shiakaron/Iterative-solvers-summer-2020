@@ -140,6 +140,37 @@ def initialise_droplet(dtmesh, loops):
             fig.canvas.draw()
             fig.canvas.flush_events() 
     print("initialisation complete")
+    U.val = U.new.copy()
+    compute_Q_spatial_ders()
+    J = Q.d2ksi*Q.d2eta - Q.dksideta**2
+    compute_u_spatial_ders()
+    for i in range(100):
+        print((i+1), " / ", 100)
+        #solve PMA and find differences between updated mesh before updating 
+        solve_PMA()
+        Qnew = Q.val + dtmesh*Q.dt
+        # 1st derivatives
+        Qdksi = M.dksiCentre.dot(Qnew); Qdksi[Ibdy.Left] = endl_; Qdksi[Ibdy.Right] = endr_;
+        Qdeta = M.detaCentre.dot(Qnew); Qdeta[Ibdy.Bottom] = endl_; Qdeta[Ibdy.Top] = endr_;
+        diff_ksi = Qdksi - Q.dksi; diff_eta = Qdeta - Q.deta
+        diff_squared = np.sqrt(diff_ksi**2 + diff_eta**2)
+        print(diff_squared.max())
+        Q.val = Qnew
+        # plot every once in a while
+        if plot3d_bool:
+            # solution
+            surf.remove() 
+            surf = ax.plot_surface(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), U.new.reshape(N_,N_), \
+                                    cmap=cm.coolwarm, rstride=1, cstride=1, linewidth=0, \
+                                    antialiased=False,alpha=0.5)
+            mesh.remove()
+            mesh = ax.plot_wireframe(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), np.full((N_,N_),-3), linewidth=0.2)
+            # mesh
+            mesh2.remove()
+            mesh2 = ax2.plot_wireframe(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), np.zeros((N_,N_)), linewidth=0.2, \
+                                       rcount=N_, ccount=N_)
+            fig.canvas.draw()
+            fig.canvas.flush_events() 
      
 def Laplace_operator(v, v_dksi, v_deta):
     """    
