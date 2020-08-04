@@ -35,7 +35,7 @@ d_ = endr_ - endl_ # domain size
 dksi_ = d_/(N_-1) # deta_ = dksi_
 dksi2_ = dksi_*dksi_
 
-k = 1e-3
+k = 1e-4
 Tf = 0.3
 plot_bool = True
 
@@ -48,7 +48,6 @@ Q = lambda:0 # mesh potential and all its derivatives
 U = lambda:0 # solution and its derivatives
 J = None # Hessian (Jacobian) of Q
 CN_term = None # holds Crank Nicholson previous rhs solution
-CN_term_new = None # holds Crank Nicholson new rhs solution
 dt = k
 
 #for plotting
@@ -56,7 +55,7 @@ if plot_bool:
     fig = plt.figure(figsize=(8,6))
     ax = fig.gca(projection='3d')
     ax.view_init(elev=30, azim=-160)
-    ax.set_xlabel('ksi'); ax.set_ylabel('eta'); ax.set_zlabel('u')
+    ax.set_xlabel('x'); ax.set_ylabel('y'); ax.set_zlabel('u')
     ax.set_zlim3d(-1,.2)  
     ax.grid(False)
     ls = LightSource(azdeg=50, altdeg=65)
@@ -116,7 +115,8 @@ def main():
             mesh = ax.plot_wireframe(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), np.full((N_,N_),-1), linewidth=0.2)
             fig.canvas.draw()
             fig.canvas.flush_events()
-            fig.suptitle("time= "+str(current_time)+", dt= "+str(dt))
+            print("time= "+str(current_time)+", dt= "+str(dt)+", u_min= "+str(min(U.new)))
+            fig.suptitle("time= "+str(current_time)+", dt= "+str(dt)+", u_min= "+str(min(U.new)))
     
 def residual(u):
     """
@@ -364,7 +364,7 @@ def compute_and_smooth_monitor():
         if p_ == 1:
             temp = (1 + U.dx**2 + U.dy**2).reshape((N_,N_))
         else:
-            temp = np.sqrt(np.abs(U.xx + U.yy)).reshape((N_,N_))
+            temp = (np.abs(U.xx + U.yy)**2).reshape((N_,N_))
     
     # smoothing           
     # fourth-order filter

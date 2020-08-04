@@ -294,7 +294,7 @@ def compute_and_smooth_monitor():
         if p_ == 1:
             temp = (1 + U.dx**2 + U.dy**2).reshape((N_,N_))
         else:
-            temp = np.sqrt(np.abs(U.xx + U.yy)).reshape((N_,N_))
+            temp = (np.abs(U.xx + U.yy)**2).reshape((N_,N_))
     
     # smoothing           
     # fourth-order filter
