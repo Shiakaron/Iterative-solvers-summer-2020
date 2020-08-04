@@ -140,12 +140,13 @@ def initialise_droplet(dtmesh, loops):
             fig.canvas.draw()
             fig.canvas.flush_events() 
     print("initialisation complete")
+    
+    # to check steady state of the mesh
     U.val = U.new.copy()
     compute_Q_spatial_ders()
     J = Q.d2ksi*Q.d2eta - Q.dksideta**2
     compute_u_spatial_ders()
-    for i in range(100):
-        print((i+1), " / ", 100)
+    for i in range(1000):
         #solve PMA and find differences between updated mesh before updating 
         solve_PMA()
         Qnew = Q.val + dtmesh*Q.dt
@@ -154,8 +155,8 @@ def initialise_droplet(dtmesh, loops):
         Qdeta = M.detaCentre.dot(Qnew); Qdeta[Ibdy.Bottom] = endl_; Qdeta[Ibdy.Top] = endr_;
         diff_ksi = Qdksi - Q.dksi; diff_eta = Qdeta - Q.deta
         diff_squared = np.sqrt(diff_ksi**2 + diff_eta**2)
-        print(diff_squared.max())
-        Q.val = Qnew
+        print((i+1), " / ", 100, ": ", diff_squared.max())
+        Q.val = Qnew.copy()
         # plot every once in a while
         if plot3d_bool:
             # solution
