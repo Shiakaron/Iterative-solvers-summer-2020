@@ -20,10 +20,10 @@ V_, Vf_ = 0, 1 # volume of droplet (starts from 0 and stops at 1)
 Vsteps_ = 100 # number of steps for droplet initialisation
 
 #GLOBAL simulation variables
-N_ = 41 # grid points
+N_ = 81 # grid points
 NN_ = N_*N_ # total number of points
 smoothing_iters_ = 4 # number of smoothing iterations per time step 
-endl_, endr_ = -1, 1
+endl_, endr_ = -2, 2
 d_ = endr_ - endl_ # domain size
 dksi_ = d_/(N_-1) # deta_ = dksi_
 dksi2_ = dksi_*dksi_
@@ -43,9 +43,10 @@ J = None # Hessian (Jacobian) of Q
 
 # for plotting
 plot3d_bool = True
-plot_mesh = True
+
 fig = plt.figure(figsize=(16,8))
 if plot3d_bool:
+    # solution and mesh
     ax = fig.add_subplot(121, projection='3d') 
     ax.view_init(elev=30, azim=-160)
     ax.set_xlabel('x'); ax.set_ylabel('y'); ax.set_zlabel('u')
@@ -54,8 +55,7 @@ if plot3d_bool:
     ls = LightSource(azdeg=50, altdeg=65)
     surf = ax.plot_surface(ksiksi, etaeta, np.zeros((N_,N_)))
     mesh = ax.plot_wireframe(ksiksi, etaeta, np.zeros((N_,N_)))
-
-if plot_mesh:
+    # mesh
     ax2 = fig.add_subplot(122, projection='3d') 
     ax2.view_init(elev=90, azim=0)
     ax2.set_xlabel('x'); ax2.set_ylabel('y');
@@ -64,6 +64,8 @@ if plot_mesh:
     ax2.grid(False)
     ls2 = LightSource(azdeg=50, altdeg=65)
     mesh2 = ax.plot_wireframe(ksiksi, etaeta, np.zeros((N_,N_)))
+    # 
+    plt.subplots_adjust(left= 0, bottom=0, right=1, top=1, wspace = 0)
 
 def main():
     """
@@ -74,7 +76,7 @@ def main():
     make_Ibdy()
     make_M()
     U.new = np.full(NN_, epsilon_)
-    initialise_droplet(3e-6, 1)
+    initialise_droplet(15e-7, 1)
 
 def solve_PMA():
     """
@@ -129,7 +131,7 @@ def initialise_droplet(dtmesh, loops):
             fig.canvas.draw()
             fig.canvas.flush_events()  
             plt.pause(0.1)
-        if plot_mesh:
+            # mesh
             mesh2.remove()
             mesh2 = ax2.plot_wireframe(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), np.zeros((N_,N_)), linewidth=0.2)
             fig.canvas.draw()
