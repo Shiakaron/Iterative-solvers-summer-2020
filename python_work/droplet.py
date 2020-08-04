@@ -12,8 +12,10 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 from matplotlib.colors import LightSource
 
+np.set_printoptions(edgeitems=6, suppress=True)
+
 #GLOBAL parameters
-R_ = 0.7 # radius of droplet
+R_ = 1 # radius of droplet
 a_ = 100
 epsilon_ = 1e-5 # thin liquid layer height
 V_, Vf_ = 0, 1 # volume of droplet (starts from 0 and stops at 1)
@@ -31,6 +33,8 @@ dksi2_ = dksi_*dksi_
 #PMA variables
 alpha_ = 0.1 # controls the mesh adaption speed 
 gamma_ = 0.1 # controls the extent of smoothing
+C_ = 1e-4 # Mackenzie normalisation constant
+dtmesh_ = 7e-7 
 
 #GLOBAL vectors/matrices/terms
 ksi = np.linspace(endl_, endr_, N_)
@@ -43,7 +47,6 @@ J = None # Hessian (Jacobian) of Q
 
 # for plotting
 plot3d_bool = True
-
 fig = plt.figure(figsize=(16,8))
 if plot3d_bool:
     # solution and mesh
@@ -76,7 +79,7 @@ def main():
     make_Ibdy()
     make_M()
     U.new = np.full(NN_, epsilon_)
-    initialise_droplet(15e-7, 1)
+    initialise_droplet(dtmesh_, 1)
 
 def solve_PMA():
     """
@@ -91,7 +94,7 @@ def solve_PMA():
     Q.dt = dQdt.reshape(NN_)
 
 def H(psi):
-    ret = 2*V_*(1-psi/(R_*R_))/(R_*R_)
+    ret = 4*V_*(1-psi/(R_*R_))/(R_*R_)
     return np.where(ret > 0, ret, 0)
 
 def G(x):
@@ -100,6 +103,7 @@ def G(x):
 def loop_pma(dtmesh, loops):
     global J
     dtloop = dtmesh/loops
+    solve_PMA()
     Q.val += dtloop*Q.dt
     for i in range(1,loops):
         compute_Q_spatial_ders()
@@ -132,7 +136,7 @@ def initialise_droplet(dtmesh, loops):
             mesh = ax.plot_wireframe(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), np.full((N_,N_),-3), linewidth=0.2)
             # mesh
             mesh2.remove()
-            mesh2 = ax2.plot_wireframe(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), np.zeros((N_,N_)), linewidth=0.2)
+            mesh2 = ax2.plot_wireframe(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), np.zeros((N_,N_)), linewidth=0.2, rcount=N_, ccount=N_)
             fig.canvas.draw()
             fig.canvas.flush_events() 
     print("initialisation complete")
@@ -277,7 +281,7 @@ def compute_and_smooth_monitor():
     mon = np.reshape(mon, NN_)
     # Mackenzie regularisation    
     mon_integral = np.sum(mon*np.abs(J))*dksi2_
-    mon += mon_integral
+    mon += C_*mon_integral
     return mon    
     
 def make_Ibdy():
@@ -336,14 +340,6 @@ def make_M():
     temp - csc_matrix(temp/(2*dksi_))
     M.dksiBack = kron(eye, temp) # df/dksi backward difference
     M.detaBack = kron(temp, eye) # df/deta backward difference
-    
-    # Smoothing Matrix
-    # off1 = np.ones(NN_-1)
-    # off1[(N_-1)::N_] = 0 
-    # off2 = np.ones(NN_-3)
-    # off2[0::N_] = 0 
-    # M.Sm = diags([off1[:-N_],2,off2,2*off1,4,2*off1,off2,2,off1[:-N_]], \
-    #              [-N_-1,-N_,-N_+1,-1,0,1,N_-1,N_,N_+1], shape=(NN_, NN_))/16
     
     # for discreet cosine transform
     temp = (2*np.cos(np.pi*np.arange(0,N_)/(N_-1))-2).reshape((N_,1))*np.ones(N_) + \
