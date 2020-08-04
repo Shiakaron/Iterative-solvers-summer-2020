@@ -20,10 +20,10 @@ V_, Vf_ = 0, 1 # volume of droplet (starts from 0 and stops at 1)
 Vsteps_ = 100 # number of steps for droplet initialisation
 
 #GLOBAL simulation variables
-N_ = 81 # grid points
+N_ = 41 # grid points
 NN_ = N_*N_ # total number of points
 smoothing_iters_ = 4 # number of smoothing iterations per time step 
-endl_, endr_ = -2, 2
+endl_, endr_ = -1, 1
 d_ = endr_ - endl_ # domain size
 dksi_ = d_/(N_-1) # deta_ = dksi_
 dksi2_ = dksi_*dksi_
