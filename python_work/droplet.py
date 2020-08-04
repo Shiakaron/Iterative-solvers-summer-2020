@@ -11,6 +11,8 @@ from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
 from matplotlib import cm
 from matplotlib.colors import LightSource
+import csv
+import os
 
 np.set_printoptions(edgeitems=6, suppress=True)
 
@@ -31,8 +33,8 @@ dksi_ = d_/(N_-1) # deta_ = dksi_
 dksi2_ = dksi_*dksi_
 
 #PMA variables
-alpha_ = 0.1 # controls the mesh adaption speed 
-gamma_ = 0.1 # controls the extent of smoothing
+alpha_ = 0.2 # controls the mesh adaption speed 
+gamma_ = 0.2 # controls the extent of smoothing
 C_ = 1e-4 # Mackenzie normalisation constant
 dtmesh_ = 7e-7 
 
@@ -46,7 +48,7 @@ U = lambda:0 # solution and its derivatives
 J = None # Hessian (Jacobian) of Q
 
 #writing to or reading from file?
-tofile = True
+tofile = False
 fromfile = not tofile
 
 # for plotting
@@ -85,10 +87,12 @@ def main():
     U.new = np.full(NN_, epsilon_)
     
     if fromfile:
-        U.val, Q.val = read_from_file("initdrop_R_"+str(R_)+"_N_"+str(N_)+"_e_"+str(epsilon_)+"_a_"+str(a_)+".txt")
+        read_from_file("initdrop_R_"+str(R_)+"_N_"+str(N_)+"_eps_"+str(epsilon_)+"_a_"+str(a_)+".txt")
     else:
         initialise_droplet(dtmesh_, 1)
 
+    check_mesh_steady_state(dtmesh_)        
+    
 def solve_PMA():
     """
     solve for dQdt = L.fancy^-1 * (|J|*M)^0/5
@@ -157,6 +161,7 @@ def initialise_droplet(dtmesh, loops):
 def check_mesh_steady_state(dt):
     # to check steady state of the mesh
     global J, V_, surf, mesh, mesh2
+    # start evolving 
     iters = 1000
     compute_Q_spatial_ders()
     J = Q.d2ksi*Q.d2eta - Q.dksideta**2
@@ -164,24 +169,26 @@ def check_mesh_steady_state(dt):
     for i in range(iters):
         #solve PMA and find differences between updated mesh before updating 
         solve_PMA()
-        Qnew = Q.val + dt*Q.dt
+        Qnew = Q.val.copy() + dt*Q.dt
         # 1st derivatives
         Qdksi = M.dksiCentre.dot(Qnew); Qdksi[Ibdy.Left] = endl_; Qdksi[Ibdy.Right] = endr_;
         Qdeta = M.detaCentre.dot(Qnew); Qdeta[Ibdy.Bottom] = endl_; Qdeta[Ibdy.Top] = endr_;
         diff_ksi = Qdksi - Q.dksi; diff_eta = Qdeta - Q.deta
         diff_squared = np.sqrt(diff_ksi**2 + diff_eta**2)
         print((i+1), " / ", iters, ": ", diff_squared.max())
+        compute_Q_spatial_ders()
+        J = Q.d2ksi*Q.d2eta - Q.dksideta**2
         Q.val = Qnew.copy()
         # plot every once in a while
         if plot3d_bool:
             # solution
             surf.remove() 
-            surf = ax.plot_surface(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), U.new.reshape(N_,N_), \
+            surf = ax.plot_surface(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), U.val.reshape(N_,N_), \
                                     cmap=cm.coolwarm, rstride=1, cstride=1, linewidth=0, \
                                     antialiased=False,alpha=0.5)
             mesh.remove()
             mesh = ax.plot_wireframe(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), np.full((N_,N_),-3), linewidth=0.2)
-            # mesh
+            #mesh
             mesh2.remove()
             mesh2 = ax2.plot_wireframe(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), np.zeros((N_,N_)), linewidth=0.2, \
                                        rcount=N_, ccount=N_)
@@ -196,8 +203,16 @@ def write_to_file(filename):
     file.close()
     
 def read_from_file(filename):
-    """
-    """
+    a = []
+    b = []
+    p_file = os.getcwd() + "\\" + filename
+    with open(p_file) as csvfile:
+        lines = csv.reader(csvfile, delimiter=' ')
+        for row in lines:
+            a.append(float(row[0]))
+            b.append(float(row[1]))
+    U.val = np.array(a)
+    Q.val = np.array(b)
 
 def Laplace_operator(v, v_dksi, v_deta):
     """    
