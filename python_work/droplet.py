@@ -33,9 +33,9 @@ dksi_ = d_/(N_-1) # deta_ = dksi_
 dksi2_ = dksi_*dksi_
 
 #PMA variables
-alpha_ = 0.2 # controls the mesh adaption speed 
-gamma_ = 0.2 # controls the extent of smoothing
-C_ = 1e-4 # Mackenzie normalisation constant
+alpha_ = 0.1 # controls the mesh adaption speed 
+gamma_ = 0.1 # controls the extent of smoothing
+C_ = 1 # Mackenzie normalisation constant
 dtmesh_ = 7e-7 
 
 #GLOBAL vectors/matrices/terms
@@ -49,7 +49,7 @@ J = None # Hessian (Jacobian) of Q
 
 #writing to or reading from file?
 tofile = False
-fromfile = not tofile
+fromfile = False
 
 # for plotting
 plot3d_bool = True
@@ -304,7 +304,7 @@ def compute_Q_spatial_ders():
     Q.dksi = M.dksiCentre.dot(Q.val); Q.dksi[Ibdy.Left] = endl_; Q.dksi[Ibdy.Right] = endr_;
     Q.deta = M.detaCentre.dot(Q.val); Q.deta[Ibdy.Bottom] = endl_; Q.deta[Ibdy.Top] = endr_;
     # 2nd derivatives
-    extra = 25/(6*dksi_)
+    extra = 25/(6*dksi_)*endr_
     temp = np.zeros(NN_); temp[Ibdy.Left] = extra; temp[Ibdy.Right] = extra
     Q.d2ksi = M.d2ksi.dot(Q.val) + temp
     temp = np.zeros(NN_); temp[Ibdy.Top] = extra; temp[Ibdy.Bottom] = extra
