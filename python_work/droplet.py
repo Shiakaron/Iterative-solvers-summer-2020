@@ -24,7 +24,7 @@ V_, Vf_ = 0, 1 # volume of droplet (starts from 0 and stops at 1)
 Vsteps_ = 100 # number of steps for droplet initialisation
 
 #GLOBAL simulation variables
-N_ = 81 # grid points
+N_ = 41 # grid points
 NN_ = N_*N_ # total number of points
 smoothing_iters_ = 4 # number of smoothing iterations per time step 
 endl_, endr_ = -2, 2
@@ -35,8 +35,8 @@ dksi2_ = dksi_*dksi_
 #PMA variables
 alpha_ = 0.1 # controls the mesh adaption speed 
 gamma_ = 0.1 # controls the extent of smoothing
-C_ = 1 # Mackenzie normalisation constant
-dtmesh_ = 7e-7 
+C_ = .5 # Mackenzie normalisation constant
+dtmesh_ = 1e-6 
 
 #GLOBAL vectors/matrices/terms
 ksi = np.linspace(endl_, endr_, N_)
@@ -54,6 +54,7 @@ fromfile = False
 # for plotting
 plot3d_bool = True
 fig = plt.figure(figsize=(16,8))
+aaa = np.linspace(0,2*np.pi)
 if plot3d_bool:
     # solution and mesh
     ax = fig.add_subplot(121, projection='3d') 
@@ -71,6 +72,7 @@ if plot3d_bool:
     ax2.w_zaxis.line.set_lw(0.)
     ax2.set_zticks([])
     ax2.grid(False)
+    ax2.plot3D(R_*np.cos(aaa),R_*np.sin(aaa),0*aaa,'r',linewidth=0.2)
     ls2 = LightSource(azdeg=50, altdeg=65)
     mesh2 = ax.plot_wireframe(ksiksi, etaeta, np.zeros((N_,N_)))
     # 
@@ -106,7 +108,7 @@ def solve_PMA():
     Q.dt = dQdt.reshape(NN_)
 
 def H(psi):
-    ret = 4*V_*(1-psi/(R_*R_))/(R_*R_)
+    ret = 4*V_*(1-psi*psi/(R_*R_))/(R_*R_)
     return np.where(ret > 0, ret, 0)
 
 def G(x):
@@ -133,7 +135,7 @@ def initialise_droplet(dtmesh, loops):
         compute_u_spatial_ders()
         #update solution
         V_ = Vf_*i/Vsteps_
-        U.new = epsilon_ + (1-epsilon_)*H(G(Q.dksi*Q.dksi+Q.deta*Q.deta))
+        U.new = epsilon_ + (1-epsilon_)*H(G(np.sqrt(Q.dksi*Q.dksi+Q.deta*Q.deta)))
         print(V_, U.new.max())
         #solve PMA and update mesh 
         loop_pma(dtmesh, loops)
