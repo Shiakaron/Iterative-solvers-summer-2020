@@ -21,22 +21,25 @@ R_ = 1 # radius of droplet
 a_ = 100
 epsilon_ = 1e-5 # thin liquid layer height
 V_, Vf_ = 0, 1 # volume of droplet (starts from 0 and stops at 1)
-Vsteps_ = 100 # number of steps for droplet initialisation
+Vsteps_ = 1000 # number of steps for droplet initialisation
 
 #GLOBAL simulation variables
-N_ = 41 # grid points
+N_ = 51 # grid points
 NN_ = N_*N_ # total number of points
 smoothing_iters_ = 4 # number of smoothing iterations per time step 
-endl_, endr_ = -2, 2
+endl_, endr_ = -2.5, 2.5
 d_ = endr_ - endl_ # domain size
 dksi_ = d_/(N_-1) # deta_ = dksi_
 dksi2_ = dksi_*dksi_
 
 #PMA variables
-alpha_ = 0.1 # controls the mesh adaption speed 
+alpha_ = 0.01 # controls the mesh adaption speed 
 gamma_ = 0.1 # controls the extent of smoothing
-C_ = .5 # Mackenzie normalisation constant
-dtmesh_ = 1e-6 
+C_ = .25 # Mackenzie normalisation constant
+dtmesh_ = 5e-7
+
+#PDE variables
+dtR_ = 5e-2
 
 #GLOBAL vectors/matrices/terms
 ksi = np.linspace(endl_, endr_, N_)
@@ -48,8 +51,8 @@ U = lambda:0 # solution and its derivatives
 J = None # Hessian (Jacobian) of Q
 
 #writing to or reading from file?
-tofile = False
-fromfile = False
+fromfile = True
+tofile = True
 
 # for plotting
 plot3d_bool = True
@@ -72,7 +75,7 @@ if plot3d_bool:
     ax2.w_zaxis.line.set_lw(0.)
     ax2.set_zticks([])
     ax2.grid(False)
-    ax2.plot3D(R_*np.cos(aaa),R_*np.sin(aaa),0*aaa,'r',linewidth=0.2)
+    radiusline = ax2.plot3D(R_*np.cos(aaa),R_*np.sin(aaa),0*aaa,'r',linewidth=0.2)
     ls2 = LightSource(azdeg=50, altdeg=65)
     mesh2 = ax.plot_wireframe(ksiksi, etaeta, np.zeros((N_,N_)))
     # 
@@ -81,51 +84,42 @@ if plot3d_bool:
 def main():
     """
     """
-    global Q, Ibdy, M, J, CN_term, surf, mesh
+    global Q, Ibdy, M, J, CN_term, surf, mesh, mesh2, V_, alpha_, gamma_, dtmesh_
     # initialise Q, Ibdy, M, U and droplet
     Q.val = np.reshape(0.5*ksiksi**2 + 0.5*etaeta**2, NN_) # mesh potential
     make_Ibdy()
     make_M()
     U.new = np.full(NN_, epsilon_)
     
+    # initialise droplet
     if fromfile:
-        read_from_file("initdrop_R_"+str(R_)+"_N_"+str(N_)+"_eps_"+str(epsilon_)+"_a_"+str(a_)+".txt")
+        read_from_file("initdrop_"+str(R_)+"_"+str(N_)+"_"+str(a_)+"_"+str(alpha_)+"_"+str(gamma_)+"_"+str(C_)+".txt")
+        V_ = Vf_
+        # plot
+        compute_Q_spatial_ders()
+        surf.remove() 
+        surf = ax.plot_surface(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), U.val.reshape(N_,N_), \
+                                    cmap=cm.coolwarm, rstride=1, cstride=1, linewidth=0, \
+                                    antialiased=False,alpha=0.5)
+        mesh.remove() 
+        mesh = ax.plot_wireframe(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), np.full((N_,N_),-3), linewidth=0.2)
+        mesh2.remove()
+        mesh2 = ax2.plot_wireframe(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), np.zeros((N_,N_)), linewidth=0.2, rcount=N_, ccount=N_)
+        fig.canvas.draw()
+        fig.canvas.flush_events() 
     else:
         initialise_droplet(dtmesh_, 1)
-
-    check_mesh_steady_state(dtmesh_)        
-    
-def solve_PMA():
-    """
-    solve for dQdt = L.fancy^-1 * (|J|*M)^0/5
-    L.fancy^-1 is the inverse of the operator L.fancy = aplha*(Identity - gamma*Lap_ξ)
-    which is solved using discreet cosine transform
-    """
-    monitor = compute_and_smooth_monitor()
-    q_rhs = np.sqrt(np.multiply(monitor, np.abs(J)))/alpha_
-    temp = dct(dct(q_rhs.reshape(N_,N_).T, norm="ortho").T, norm="ortho")
-    dQdt = idct(idct(np.divide(temp,(1-gamma_*M.Leig)).T, norm="ortho").T, norm="ortho") 
-    Q.dt = dQdt.reshape(NN_)
-
-def H(psi):
-    ret = 4*V_*(1-psi*psi/(R_*R_))/(R_*R_)
-    return np.where(ret > 0, ret, 0)
-
-def G(x):
-    return R_ + np.log((1+np.exp(-2*a_*(x+R_)))/(1+np.exp(-2*a_*(x-R_))))/(2*a_)
         
-def loop_pma(dtmesh, loops):
-    global J
-    dtloop = dtmesh/loops
-    solve_PMA()
-    Q.val += dtloop*Q.dt
-    for i in range(1,loops):
-        compute_Q_spatial_ders()
-        J = Q.d2ksi*Q.d2eta - Q.dksideta**2
-        solve_PMA()
-        Q.val += dtloop*Q.dt
+    # check PMA steady state
+    check_mesh(dtmesh_, 8e-5)     
+    
+    # evolve droplet radius explicitely and update mesh
+    alpha_ = 0.01
+    dtmesh_ = 3e-6
+    evolve_R_explicit(1000, 2, 1e-3)
 
 def initialise_droplet(dtmesh, loops):
+    print("initialising droplet")
     global J, V_, surf, mesh, mesh2
     for i in range(1,Vsteps_+1):
         U.val = U.new.copy()
@@ -135,7 +129,7 @@ def initialise_droplet(dtmesh, loops):
         compute_u_spatial_ders()
         #update solution
         V_ = Vf_*i/Vsteps_
-        U.new = epsilon_ + (1-epsilon_)*H(G(np.sqrt(Q.dksi*Q.dksi+Q.deta*Q.deta)))
+        U.new = compute_U()
         print(V_, U.new.max())
         #solve PMA and update mesh 
         loop_pma(dtmesh, loops)
@@ -158,13 +152,13 @@ def initialise_droplet(dtmesh, loops):
     
     # write values to a file for quick access??
     if tofile:
-        write_to_file("initdrop_R_"+str(R_)+"_N_"+str(N_)+"_eps_"+str(epsilon_)+"_a_"+str(a_)+".txt")
+        write_to_file("initdrop_"+str(R_)+"_"+str(N_)+"_"+str(a_)+"_"+str(alpha_)+"_"+str(gamma_)+"_"+str(C_)+".txt")
 
-def check_mesh_steady_state(dt):
+def check_mesh(dt, atol):
     # to check steady state of the mesh
     global J, V_, surf, mesh, mesh2
-    # start evolving 
     iters = 1000
+    # start evolving 
     compute_Q_spatial_ders()
     J = Q.d2ksi*Q.d2eta - Q.dksideta**2
     compute_u_spatial_ders()
@@ -181,6 +175,8 @@ def check_mesh_steady_state(dt):
         compute_Q_spatial_ders()
         J = Q.d2ksi*Q.d2eta - Q.dksideta**2
         Q.val = Qnew.copy()
+        # update solution
+        U.val = compute_U()
         # plot every once in a while
         if plot3d_bool:
             # solution
@@ -196,8 +192,65 @@ def check_mesh_steady_state(dt):
                                        rcount=N_, ccount=N_)
             fig.canvas.draw()
             fig.canvas.flush_events() 
-  
+        if diff_squared.max() < atol:
+            print("PMA steady state achieved with atol = "+str(atol))
+            break
+
+def evolve_R_explicit(pmaloops, Rfinal, tol):
+    global R_, surf, mesh, mesh2, J, alpha_, radiusline
+    alpha_ = 10
+    i = 0
+    while (abs(Rfinal - R_) > tol):
+        U.val = U.new.copy()
+        #compute derivatives
+        compute_Q_spatial_ders()
+        J = Q.d2ksi*Q.d2eta - Q.dksideta**2
+        compute_u_spatial_ders()
+        # new radius
+        R_ += dtR_*Rdot()
+        U.val = compute_U()
+        print(dtR_*i, R_, U.val.max())
+        #solve PMA and update mesh 
+        loop_pma(dtmesh_, pmaloops)
+        # iteration
+        i += 1
+        # plot
+        if plot3d_bool:
+            # solution
+            surf.remove() 
+            surf = ax.plot_surface(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), U.val.reshape(N_,N_), \
+                                    cmap=cm.coolwarm, rstride=1, cstride=1, linewidth=0, \
+                                    antialiased=False,alpha=0.5)
+            mesh.remove()
+            mesh = ax.plot_wireframe(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), np.full((N_,N_),-3), linewidth=0.2)
+            # mesh
+            ax2.clear()
+            ax2.w_zaxis.line.set_lw(0.)
+            ax2.set_zticks([])
+            ax2.grid(False)
+            mesh2 = ax2.plot_wireframe(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), np.zeros((N_,N_)), linewidth=0.2, rcount=N_, ccount=N_)
+            # update circle
+            radiusline = ax2.plot3D(R_*np.cos(aaa),R_*np.sin(aaa),0*aaa,'r',linewidth=0.2)
+            fig.canvas.draw()
+            fig.canvas.flush_events() 
+            
+            
+
+def compute_U():
+    return epsilon_ + (1-epsilon_)*H(G(np.sqrt(Q.dksi*Q.dksi+Q.deta*Q.deta)))
+
+def H(psi):
+    ret = 4*V_*(1-psi*psi/(R_*R_))/(R_*R_)
+    return np.where(ret > 0, ret, 0)
+
+def G(x):
+    return R_ + np.log((1+np.exp(-2*a_*(x+R_)))/(1+np.exp(-2*a_*(x-R_))))/(2*a_)
+     
+def Rdot():
+    return (8*V_/R_**3 - 1)/(3*np.log(1/epsilon_)) 
+
 def write_to_file(filename):
+    print("writing in file")
     file = open(filename, "w") 
     for i in range(NN_):
         # U.val Q.val 
@@ -205,6 +258,7 @@ def write_to_file(filename):
     file.close()
     
 def read_from_file(filename):
+    print("reading intialised state from file")
     a = []
     b = []
     p_file = os.getcwd() + "\\" + filename
@@ -213,8 +267,32 @@ def read_from_file(filename):
         for row in lines:
             a.append(float(row[0]))
             b.append(float(row[1]))
-    U.val = np.array(a)
+    U.new = np.array(a)
+    U.val = U.new.copy()
     Q.val = np.array(b)
+
+def solve_PMA():
+    """
+    solve for dQdt = L.fancy^-1 * (|J|*M)^0/5
+    L.fancy^-1 is the inverse of the operator L.fancy = aplha*(Identity - gamma*Lap_ξ)
+    which is solved using discreet cosine transform
+    """
+    monitor = compute_and_smooth_monitor()
+    q_rhs = np.sqrt(np.multiply(monitor, np.abs(J)))/alpha_
+    temp = dct(dct(q_rhs.reshape(N_,N_).T, norm="ortho").T, norm="ortho")
+    dQdt = idct(idct(np.divide(temp,(1-gamma_*M.Leig)).T, norm="ortho").T, norm="ortho") 
+    Q.dt = dQdt.reshape(NN_)
+    
+def loop_pma(dt, loops):
+    global J
+    solve_PMA()
+    Q.val += dt*Q.dt
+    for i in range(1,loops):
+        compute_Q_spatial_ders()
+        J = Q.d2ksi*Q.d2eta - Q.dksideta**2
+        compute_u_spatial_ders()
+        solve_PMA()
+        Q.val += dt*Q.dt
 
 def Laplace_operator(v, v_dksi, v_deta):
     """    
