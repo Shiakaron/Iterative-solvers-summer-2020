@@ -202,6 +202,7 @@ def evolve_R_explicit(pmaloops, Rfinal, tol):
     i = 0
     U.val = U.new.copy()
     while (abs(Rfinal - R_) > tol):
+        print(time, R_, U.val.max())
         #compute derivatives
         compute_Q_spatial_ders()
         J = Q.d2ksi*Q.d2eta - Q.dksideta**2
@@ -211,7 +212,6 @@ def evolve_R_explicit(pmaloops, Rfinal, tol):
         # new radius
         R_ += dt*Rdot()
         U.val = compute_U()
-        print(time, R_, U.val.max())
         #solve PMA and update mesh 
         loop_pma(dtmesh_, pmaloops)
         # iteration
