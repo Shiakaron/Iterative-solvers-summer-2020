@@ -114,9 +114,9 @@ def main():
     check_mesh(dtmesh_, 8e-5)     
     
     # evolve droplet radius explicitely and update mesh
-    alpha_ = 0.01
-    dtmesh_ = 3e-6
-    evolve_R_explicit(1000, 2, 1e-3)
+    alpha_ = 0.1
+    dtmesh_ = 1e-6
+    evolve_R_explicit(20, 2, 1e-2)
 
 def initialise_droplet(dtmesh, loops):
     print("initialising droplet")
@@ -197,23 +197,26 @@ def check_mesh(dt, atol):
             break
 
 def evolve_R_explicit(pmaloops, Rfinal, tol):
-    global R_, surf, mesh, mesh2, J, alpha_, radiusline
-    alpha_ = 10
+    global R_, surf, mesh, mesh2, J, radiusline
+    time = 0
     i = 0
+    U.val = U.new.copy()
     while (abs(Rfinal - R_) > tol):
-        U.val = U.new.copy()
         #compute derivatives
         compute_Q_spatial_ders()
         J = Q.d2ksi*Q.d2eta - Q.dksideta**2
         compute_u_spatial_ders()
+        # timestep
+        dt = dtR_*(R_**2)
         # new radius
-        R_ += dtR_*Rdot()
+        R_ += dt*Rdot()
         U.val = compute_U()
-        print(dtR_*i, R_, U.val.max())
+        print(time, R_, U.val.max())
         #solve PMA and update mesh 
         loop_pma(dtmesh_, pmaloops)
         # iteration
         i += 1
+        time += dt
         # plot
         if plot3d_bool:
             # solution
@@ -230,7 +233,7 @@ def evolve_R_explicit(pmaloops, Rfinal, tol):
             ax2.grid(False)
             mesh2 = ax2.plot_wireframe(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), np.zeros((N_,N_)), linewidth=0.2, rcount=N_, ccount=N_)
             # update circle
-            radiusline = ax2.plot3D(R_*np.cos(aaa),R_*np.sin(aaa),0*aaa,'r',linewidth=0.2)
+            radiusline = ax2.plot3D(R_*np.cos(aaa),R_*np.sin(aaa),0*aaa,'r',linewidth=0.1, alpha=0.7)
             fig.canvas.draw()
             fig.canvas.flush_events() 
             
