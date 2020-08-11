@@ -52,7 +52,7 @@ J = None # Hessian (Jacobian) of Q
 
 #writing to or reading from file?
 fromfile = True
-tofile = True
+tofile = False
 
 # for plotting
 plot3d_bool = True
@@ -108,18 +108,28 @@ def main():
         fig.canvas.draw()
         fig.canvas.flush_events() 
     else:
-        initialise_droplet(dtmesh_, 1)
-     
+        initialise_droplet(dtmesh_, 1)  
+       
     # check node spacings
-    investigate_minimum_spacing()    
+    investigate_minimum_spacing()     
         
     # check PMA steady state
-    # check_mesh(dtmesh_, 8e-5)     
+    check_mesh(dtmesh_, 8e-5)     
     
-    # # evolve droplet radius explicitely and update mesh
-    # alpha_ = 0.1
-    # dtmesh_ = 1e-6
-    # evolve_R_explicit(20, 2, 1e-2)
+    # evolve droplet radius explicitely and update mesh
+    alpha_ = 0.001
+    dtmesh_ = 1e-8
+    evolve_R_explicit(20, 1.7, 1e-2)
+    
+    # check PMA steady state
+    check_mesh(1e-7, 8e-5)  
+    
+    # check node spacings
+    investigate_minimum_spacing()  
+    
+    
+    
+    
 
 def initialise_droplet(dtmesh, loops):
     print("initialising droplet")
@@ -161,27 +171,37 @@ def check_mesh(dt, atol):
     # to check steady state of the mesh
     global J, V_, surf, mesh, mesh2
     iters = 1000
-    # start evolving 
+    
+    # loop once to set Qdksiold and Qdetaold
     compute_Q_spatial_ders()
     J = Q.d2ksi*Q.d2eta - Q.dksideta**2
     compute_u_spatial_ders()
-    for i in range(iters):
-        #solve PMA and find differences between updated mesh before updating 
-        solve_PMA()
-        Qnew = Q.val.copy() + dt*Q.dt
-        # 1st derivatives
-        Qdksi = M.dksiCentre.dot(Qnew); Qdksi[Ibdy.Left] = endl_; Qdksi[Ibdy.Right] = endr_;
-        Qdeta = M.detaCentre.dot(Qnew); Qdeta[Ibdy.Bottom] = endl_; Qdeta[Ibdy.Top] = endr_;
-        diff_ksi = Qdksi - Q.dksi; diff_eta = Qdeta - Q.deta
-        diff_squared = np.sqrt(diff_ksi**2 + diff_eta**2)
-        print((i+1), " / ", iters, ": ", diff_squared.max())
+    # update solution for new mesh
+    U.val = compute_U()
+    #solve PMA and update mesh
+    solve_PMA()
+    Q.val += dt*Q.dt
+    # set Qdksiold and Qdetaold
+    Qdksiold = Q.dksi.copy()
+    Qdetaold = Q.deta.copy()
+    
+    for i in range(iters):  
+        # loop
         compute_Q_spatial_ders()
         J = Q.d2ksi*Q.d2eta - Q.dksideta**2
-        Q.val = Qnew.copy()
-        # update solution
+        compute_u_spatial_ders()
         U.val = compute_U()
+        solve_PMA()
+        Q.val += dt*Q.dt
+        # find differences between old and new mesh
+        diff_ksi = Q.dksi - Qdksiold; diff_eta = Q.deta - Qdetaold
+        diff_squared = np.sqrt(diff_ksi**2 + diff_eta**2)
+        print((i+1), " / ", iters, ": ", diff_squared.max())
+        # update Qdksiold and Qdetaold
+        Qdksiold = Q.dksi.copy()
+        Qdetaold = Q.deta.copy()
         # plot every once in a while
-        if plot3d_bool:
+        if plot3d_bool and i%50 == 0:
             # solution
             surf.remove() 
             surf = ax.plot_surface(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), U.val.reshape(N_,N_), \
@@ -249,8 +269,9 @@ def investigate_minimum_spacing():
     ax3.set_zlim3d(0,0.2)  
     ax3.grid(False)
     ax3.plot_surface(Q.dksi.reshape(N_,N_)[1:-1,1:-1], Q.deta.reshape(N_,N_)[1:-1,1:-1], min_spacings)
-    print("original spacing: ", dksi_)
-    print("minimum spacing created: ", min_spacings.min())
+    print("Original mesh spacing: ", dksi_)
+    print("Current minimum mesh spacing: ", min_spacings.min())
+    print("Spacing at droplet boundary should ideally be of order: ", 1/a_)
             
 def compute_spacings():
     """
