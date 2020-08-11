@@ -109,14 +109,17 @@ def main():
         fig.canvas.flush_events() 
     else:
         initialise_droplet(dtmesh_, 1)
+     
+    # check node spacings
+    investigate_minimum_spacing()    
         
     # check PMA steady state
-    check_mesh(dtmesh_, 8e-5)     
+    # check_mesh(dtmesh_, 8e-5)     
     
-    # evolve droplet radius explicitely and update mesh
-    alpha_ = 0.1
-    dtmesh_ = 1e-6
-    evolve_R_explicit(20, 2, 1e-2)
+    # # evolve droplet radius explicitely and update mesh
+    # alpha_ = 0.1
+    # dtmesh_ = 1e-6
+    # evolve_R_explicit(20, 2, 1e-2)
 
 def initialise_droplet(dtmesh, loops):
     print("initialising droplet")
@@ -233,11 +236,56 @@ def evolve_R_explicit(pmaloops, Rfinal, tol):
             ax2.grid(False)
             mesh2 = ax2.plot_wireframe(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), np.zeros((N_,N_)), linewidth=0.2, rcount=N_, ccount=N_)
             # update circle
-            radiusline = ax2.plot3D(R_*np.cos(aaa),R_*np.sin(aaa),0*aaa,'r',linewidth=0.1, alpha=0.7)
+            radiusline = ax2.plot3D(R_*np.cos(aaa),R_*np.sin(aaa),0*aaa,'r',linewidth=0.15, alpha=0.7)
             fig.canvas.draw()
             fig.canvas.flush_events() 
+          
+def investigate_minimum_spacing():
+    min_spacings = get_minimum_spacings()
+    fig2 = plt.figure(figsize=(10,8)) 
+    ax3 = fig2.add_subplot(111, projection='3d') 
+    ax3.view_init(elev=30, azim=-160)
+    ax3.set_xlabel('x'); ax.set_ylabel('y'); ax.set_zlabel('min spacing')
+    ax3.set_zlim3d(0,0.2)  
+    ax3.grid(False)
+    ax3.plot_surface(Q.dksi.reshape(N_,N_)[1:-1,1:-1], Q.deta.reshape(N_,N_)[1:-1,1:-1], min_spacings)
+    print("original spacing: ", dksi_)
+    print("minimum spacing created: ", min_spacings.min())
             
-            
+def compute_spacings():
+    """
+    N-W   N   N-E
+        \ | /
+     W -[i,j]- E
+        / | \
+    S-W   S  S-E
+    
+    return (for each [i,j] in the mesh) a list with the spacings between the points
+    [E, S, S-E, S-W]
+    only half of the directions for each point in order to avoid duplicates
+    """            
+    xx = Q.dksi.reshape(N_,N_)
+    yy = Q.deta.reshape(N_,N_)
+    distance = np.zeros((4, N_, N_))
+    # EAST (x axis right)
+    distance[0, :, :-1] = abs(xx - np.roll(xx, -1, axis=1))[:, :-1]
+    # SOUTH (y axis down)
+    distance[1, 1:, :] = abs(yy - np.roll(yy, 1, axis=0))[1:, :]
+    # SOUTH EAST (x axis right, y axis down)
+    distance[2, 1:, :-1] = np.sqrt((yy - np.roll(np.roll(yy, 1, axis=0), -1, axis=1))[1:, :-1]**2
+        + (xx - np.roll(np.roll(xx, 1, axis=0), -1, axis=1))[:-1, :-1]**2)
+    # SOUTH WEST (x axis left, y axis down)
+    distance[3, 1:, 1:] = np.sqrt((yy - np.roll(np.roll(yy, 1, axis=0), 1, axis=1))[1:, 1:]**2
+        + (xx - np.roll(np.roll(xx, 1, axis=0), 1, axis=1))[:-1, 1:]**2)
+    return distance
+
+def get_minimum_spacings():
+    """
+    """
+    spacings = compute_spacings()
+    min_spacing1 = np.minimum(spacings[0,1:-1,1:-1],spacings[1,1:-1,1:-1])
+    min_spacing2 = np.minimum(spacings[2,1:-1,1:-1],spacings[3,1:-1,1:-1])
+    return np.minimum(min_spacing1, min_spacing2)    
 
 def compute_U():
     return epsilon_ + (1-epsilon_)*H(G(np.sqrt(Q.dksi*Q.dksi+Q.deta*Q.deta)))
