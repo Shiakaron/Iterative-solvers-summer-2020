@@ -201,7 +201,7 @@ def check_mesh(dt, atol):
         Qdksiold = Q.dksi.copy()
         Qdetaold = Q.deta.copy()
         # plot every once in a while
-        if plot3d_bool and i%50 == 0:
+        if plot3d_bool and i%100 == 0:
             # solution
             surf.remove() 
             surf = ax.plot_surface(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), U.val.reshape(N_,N_), \
@@ -216,6 +216,19 @@ def check_mesh(dt, atol):
             fig.canvas.draw()
             fig.canvas.flush_events() 
         if diff_squared.max() < atol:
+            # solution
+            surf.remove() 
+            surf = ax.plot_surface(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), U.val.reshape(N_,N_), \
+                                    cmap=cm.coolwarm, rstride=1, cstride=1, linewidth=0, \
+                                    antialiased=False,alpha=0.5)
+            mesh.remove()
+            mesh = ax.plot_wireframe(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), np.full((N_,N_),-3), linewidth=0.2)
+            #mesh
+            mesh2.remove()
+            mesh2 = ax2.plot_wireframe(Q.dksi.reshape(N_,N_), Q.deta.reshape(N_,N_), np.zeros((N_,N_)), linewidth=0.2, \
+                                       rcount=N_, ccount=N_)
+            fig.canvas.draw()
+            fig.canvas.flush_events()
             print("PMA steady state achieved with atol = "+str(atol))
             break
 
