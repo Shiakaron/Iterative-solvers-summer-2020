@@ -21,27 +21,26 @@ R_ = 2 # radius of droplet
 a_ = 100
 epsilon_ = 1e-5 # thin liquid layer height (thickness of precursor film = h* ?)
 V_, Vf_ = 0, 1 # volume of droplet (starts from 0 and stops at 1)
-Vsteps_ = 1000 # number of steps for droplet initialisation
+Vsteps_ = 100 # number of steps for droplet initialisation
 
 #GLOBAL simulation variables
-Nx_, Ny_ = 51, 76 # grid points
+Nx_, Ny_ = 61, 61 # grid points
 NN_ = Nx_*Ny_ # total number of points
 smoothing_iters_ = 4 # number of smoothing iterations per time step 
-endl_, endr_ = -2.5, 2.5 # domain limits
-endb_, endt_ = -2.5, 5
+endl_, endr_ = -3, 3 # domain limits
+endb_, endt_ = -3, 3
 dx_ = endr_ - endl_ # domain size
 dy_ = endt_ - endb_ 
 dksi_ = dx_/(Nx_-1) # node spacing
 deta_ = dy_/(Ny_-1)
-print(dksi_, deta_)
 dksi2_ = dksi_*dksi_
 deta2_ = deta_*deta_
 
 #PMA variables
 alpha_ = 0.01 # controls the mesh adaption speed 
 gamma_ = 0.1 # controls the extent of smoothing
-C_ = .25 # Mackenzie normalisation constant
-dtmesh_ = 5e-7
+C_ = .15 # Mackenzie normalisation constant
+dtmesh_ = 1e-7
 
 #PDE variables
 dtR_ = 5e-2
@@ -103,24 +102,26 @@ def main():
     U.new = np.full(NN_, epsilon_)
     
     # initialise droplet
-    err = initialise_droplet(dtmesh_, 1, False, True)  
+    err = initialise_droplet(1e-8, 500, False, False)  
        
     # check node spacings
-    investigate_minimum_spacing()     
+    investigate_minimum_spacing()  
+    investigate_distance_to_contact_line()
         
     # check PMA steady state
-    check_mesh(dtmesh_, 1e-4)     
+    check_mesh(1000, 1e-8, 5e-6)     
     
     # evolve droplet radius explicitely and update mesh
-    alpha_ = 0.001
-    dtmesh_ = 1e-8
-    evolve_R_explicit(25, 2, 1e-2)
+    # alpha_ = 0.001
+    # dtmesh_ = 1e-8
+    # evolve_R_explicit(25, 2, 1e-2)
     
-    # check PMA steady state
-    check_mesh(1e-7, 1e-5)  
+    # # check PMA steady state
+    # check_mesh(1000, 1e-7, 1e-4)  
     
     # check node spacings
-    investigate_minimum_spacing()  
+    investigate_minimum_spacing() 
+    investigate_distance_to_contact_line()
     
 
 def initialise_droplet(dtmesh, loops, fromfile, tofile):
@@ -181,11 +182,10 @@ def initialise_droplet(dtmesh, loops, fromfile, tofile):
                        "_"+str(alpha_)+"_"+str(gamma_)+"_"+str(C_)+".txt")
     return 0
 
-def check_mesh(dt, atol):
+def check_mesh(iters, dt, atol):
     # to check steady state of the mesh
     global J, V_, surf, mesh, mesh2
-    iters = 1000
-    
+   
     # loop once to set Qdksiold and Qdetaold
     compute_Q_spatial_ders()
     J = Q.d2ksi*Q.d2eta - Q.dksideta**2
@@ -329,13 +329,13 @@ def investigate_minimum_spacing():
     ax3 = fig2.add_subplot(111, projection='3d') 
     ax3.view_init(elev=30, azim=-160)
     ax3.set_xlabel('x'); ax.set_ylabel('y'); ax.set_zlabel('min spacing')
-    ax3.set_zlim3d(0,0.2)  
+    ax3.set_zlim3d(0,0.1)  
     ax3.grid(False)
     ax3.plot_surface(Q.dksi.reshape(Ny_,Nx_)[1:-1,1:-1], Q.deta.reshape(Ny_,Nx_)[1:-1,1:-1], min_spacings)
     print("Original mesh spacing: ", dksi_)
     print("Current minimum mesh spacing: ", min_spacings.min())
     print("Spacing at droplet boundary should ideally be of order: ", 1/a_)
-            
+       
 def compute_spacings():
     """
     
@@ -351,26 +351,42 @@ def compute_spacings():
     """            
     xx = Q.dksi.reshape(Ny_,Nx_)
     yy = Q.deta.reshape(Ny_,Nx_)
-    distance = np.zeros((4, Ny_, Nx_))
+    spacing = np.zeros((4, Ny_, Nx_))
     # EAST (x axis right)
-    distance[0, :, :-1] = abs(xx - np.roll(xx, -1, axis=1))[:, :-1]
+    spacing[0, :, :-1] = abs(xx - np.roll(xx, -1, axis=1))[:, :-1]
     # SOUTH (y axis down)
-    distance[1, 1:, :] = abs(yy - np.roll(yy, 1, axis=0))[1:, :]
+    spacing[1, 1:, :] = abs(yy - np.roll(yy, 1, axis=0))[1:, :]
     # SOUTH EAST (x axis right, y axis down)
-    distance[2, 1:, :-1] = np.sqrt((yy - np.roll(np.roll(yy, 1, axis=0), -1, axis=1))[1:, :-1]**2
+    spacing[2, 1:, :-1] = np.sqrt((yy - np.roll(np.roll(yy, 1, axis=0), -1, axis=1))[1:, :-1]**2
         + (xx - np.roll(np.roll(xx, 1, axis=0), -1, axis=1))[:-1, :-1]**2)
     # SOUTH WEST (x axis left, y axis down)
-    distance[3, 1:, 1:] = np.sqrt((yy - np.roll(np.roll(yy, 1, axis=0), 1, axis=1))[1:, 1:]**2
+    spacing[3, 1:, 1:] = np.sqrt((yy - np.roll(np.roll(yy, 1, axis=0), 1, axis=1))[1:, 1:]**2
         + (xx - np.roll(np.roll(xx, 1, axis=0), 1, axis=1))[:-1, 1:]**2)
-    return distance
+    return spacing
 
 def get_minimum_spacings():
-    """
-    """
     spacings = compute_spacings()
     min_spacing1 = np.minimum(spacings[0,1:-1,1:-1],spacings[1,1:-1,1:-1])
     min_spacing2 = np.minimum(spacings[2,1:-1,1:-1],spacings[3,1:-1,1:-1])
     return np.minimum(min_spacing1, min_spacing2)    
+
+def investigate_distance_to_contact_line():
+    xx = []
+    yy = []
+    zz = []
+    for ind in range(NN_):
+        z = abs(np.sqrt(Q.dksi[ind]**2 + Q.deta[ind]**2)-R_) # droplet is centered at 0,0
+        if z < 0.02:
+            xx.append(Q.dksi[ind])
+            yy.append(Q.deta[ind])
+            zz.append(z)
+    fig2 = plt.figure(figsize=(10,8)) 
+    ax3 = fig2.add_subplot(111, projection='3d') 
+    ax3.view_init(elev=30, azim=-160)
+    ax3.set_xlabel('x'); ax.set_ylabel('y'); ax.set_zlabel('min spacing')
+    ax3.set_zlim3d(0,0.03)  
+    ax3.grid(False)
+    ax3.scatter(xx, yy, zz)
 
 def compute_U():
     return epsilon_ + (1-epsilon_)*H(G(np.sqrt(Q.dksi*Q.dksi+Q.deta*Q.deta)))
