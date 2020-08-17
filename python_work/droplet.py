@@ -17,9 +17,9 @@ import os
 np.set_printoptions(edgeitems=6, suppress=True)
 
 #GLOBAL parameters
-R_ = 1 # radius of droplet
+R_ = 2 # radius of droplet
 a_ = 100
-epsilon_ = 1e-5 # thin liquid layer height
+epsilon_ = 1e-5 # thin liquid layer height (thickness of precursor film = h* ?)
 V_, Vf_ = 0, 1 # volume of droplet (starts from 0 and stops at 1)
 Vsteps_ = 1000 # number of steps for droplet initialisation
 
@@ -45,7 +45,13 @@ dtmesh_ = 5e-7
 
 #PDE variables
 dtR_ = 5e-2
-a2_ = 10*2*np.pi/180 # angle of inclined surface
+alpha2_ = 10*np.pi/180 # angle of inclined surface
+n_ = 3 # exponent of the interaction
+m_ = 2 # exponent of the interaction
+Bo_ = None # Bond number rhi*g*Lo**2/sigma
+epsilon2_ = None # ratio of characteristic droplet thickness and extent of substrate Ho/Lo
+sigma_ = None # surface tension constant
+theta_ = None # contact angle - how to calculate?
 
 #GLOBAL vectors/matrices/terms
 ksiksi, etaeta = np.meshgrid(np.linspace(endl_, endr_, Nx_), np.linspace(endb_, endt_, Ny_)) # rectangular grid
@@ -54,10 +60,7 @@ M = lambda:0 # derivative matrices
 Q = lambda:0 # mesh potential and all its derivatives
 U = lambda:0 # solution and its derivatives
 J = None # Hessian (Jacobian) of Q
-
-#writing to or reading from file?
-fromfile = True
-tofile = False
+P = lambda:0 # Pressure and its derivatives
 
 # for plotting
 plot3d_bool = True
@@ -92,7 +95,7 @@ if plot3d_bool:
 def main():
     """
     """
-    global Q, Ibdy, M, J, CN_term, surf, mesh, mesh2, V_, alpha_, gamma_, dtmesh_
+    global Q, Ibdy, M, J, CN_term, surf, mesh, mesh2, V_, alpha_, gamma_, dtmesh_, radiusline
     # initialise Q, Ibdy, M, U and droplet
     Q.val = np.reshape(0.5*ksiksi**2 + 0.5*etaeta**2, NN_) # mesh potential
     make_Ibdy()
@@ -100,8 +103,33 @@ def main():
     U.new = np.full(NN_, epsilon_)
     
     # initialise droplet
+    err = initialise_droplet(dtmesh_, 1, False, True)  
+       
+    # check node spacings
+    investigate_minimum_spacing()     
+        
+    # check PMA steady state
+    check_mesh(dtmesh_, 1e-4)     
+    
+    # evolve droplet radius explicitely and update mesh
+    alpha_ = 0.001
+    dtmesh_ = 1e-8
+    evolve_R_explicit(25, 2, 1e-2)
+    
+    # check PMA steady state
+    check_mesh(1e-7, 1e-5)  
+    
+    # check node spacings
+    investigate_minimum_spacing()  
+    
+
+def initialise_droplet(dtmesh, loops, fromfile, tofile):
+    print("initialising droplet")
+    global J, V_, surf, mesh, mesh2
     if fromfile:
-        read_from_file("initdrop_rect_"+str(R_)+"_"+str(Nx_)+"_"+str(a_)+"_"+str(alpha_)+"_"+str(gamma_)+"_"+str(C_)+".txt")
+        # initialise from file
+        read_from_file("initdrop_rect_"+str(R_)+"_"+str(Nx_)+"-"+str(Ny_)+"_"+str(a_)+\
+                       "_"+str(alpha_)+"_"+str(gamma_)+"_"+str(C_)+".txt")
         V_ = Vf_
         # plot
         compute_Q_spatial_ders()
@@ -114,31 +142,9 @@ def main():
         mesh2.remove()
         mesh2 = ax2.plot_wireframe(Q.dksi.reshape(Ny_,Nx_), Q.deta.reshape(Ny_,Nx_), np.zeros((Ny_,Nx_)), linewidth=0.2, rcount=Ny_, ccount=Nx_)
         fig.canvas.draw()
-        fig.canvas.flush_events() 
-    else:
-        initialise_droplet(dtmesh_, 1)  
-       
-    # check node spacings
-    investigate_minimum_spacing()     
-        
-    # check PMA steady state
-    check_mesh(dtmesh_, 1e-4)     
-    
-    # evolve droplet radius explicitely and update mesh
-    alpha_ = 0.001
-    dtmesh_ = 1e-8
-    evolve_R_explicit(20, 1.7, 1e-2)
-    
-    # check PMA steady state
-    check_mesh(1e-7, 1e-4)  
-    
-    # check node spacings
-    investigate_minimum_spacing()  
-    
-
-def initialise_droplet(dtmesh, loops):
-    print("initialising droplet")
-    global J, V_, surf, mesh, mesh2
+        fig.canvas.flush_events()
+        return 0
+    # else steadily inflate drop 
     for i in range(1,Vsteps_+1):
         U.val = U.new.copy()
         #compute derivatives
@@ -155,7 +161,7 @@ def initialise_droplet(dtmesh, loops):
         if plot3d_bool:
             # solution
             surf.remove() 
-            surf = ax.plot_surface(Q.dksi.reshape(Ny_,Nx_), Q.deta.reshape(Ny_,Nx_), U.new.reshape(Ny_,Nx_), \
+            surf = ax.plot_surface(Q.dksi.reshape(Ny_,Nx_), Q.deta.reshape(Ny_,Nx_), U.val.reshape(Ny_,Nx_), \
                                    rstride=1, cstride=1, linewidth=0, \
                                    cmap=cm.coolwarm, antialiased=False,alpha=0.5)
             mesh.remove()
@@ -169,10 +175,11 @@ def initialise_droplet(dtmesh, loops):
             fig.canvas.flush_events() 
     U.val = U.new.copy()
     print("initialisation complete")
-    
     # write values to a file for quick access??
     if tofile:
-        write_to_file("initdrop_rect_"+str(R_)+"_"+str(Nx_)+"_"+str(a_)+"_"+str(alpha_)+"_"+str(gamma_)+"_"+str(C_)+".txt")
+        write_to_file("initdrop_rect_"+str(R_)+"_"+str(Nx_)+"-"+str(Ny_)+"_"+str(a_)+\
+                       "_"+str(alpha_)+"_"+str(gamma_)+"_"+str(C_)+".txt")
+    return 0
 
 def check_mesh(dt, atol):
     # to check steady state of the mesh
@@ -242,6 +249,7 @@ def check_mesh(dt, atol):
             break
 
 def evolve_R_explicit(pmaloops, Rfinal, tol):
+    print("evolving the radius explicitely")
     global R_, surf, mesh, mesh2, J, radiusline
     time = 0
     i = 0
@@ -281,14 +289,38 @@ def evolve_R_explicit(pmaloops, Rfinal, tol):
                                        linewidth=0.2, rstride=1, cstride=1,)
             radiusline = ax2.plot3D(R_*np.cos(aaa),R_*np.sin(aaa),0*aaa,'r',linewidth=0.15, alpha=0.7)
             fig.canvas.draw()
-            fig.canvas.flush_events() 
+            fig.canvas.flush_events()
+    return 0
+  
    
 
 def F():
     """
-    dhdt = F(h,p)
+    dhdt = F(h,p)   
+    
+    h = U.val (for now)
     """
-    dhdt = np.zeros((Ny_,Nx_))
+    compute_P_spatial_ders()
+    A = (P.dx - Bo_*np.sin(alpha2_)/epsilon2_)*(U.val**3)/3
+    dhdt = np.divide(Q.d2eta*M.dksiCentre.dot(A) - Q.dksideta*M.detaCentre.dot(A) 
+                     - Q.dksideta*M.dksiCentre.dot(P.dy) + Q.d2ksi*M.detaCentre.dot(P.dy), J)
+    return dhdt
+    
+def PI():
+    """
+    disjoining pressure term
+    """
+    return (n_-1)*(m_-1)*sigma_*(1-np.cos(theta_))*(np.divide(epsilon_, U.val)**n_-np.divide(epsilon_, U.val)**m_)/(epsilon_*(n_-m_))
+                        
+def p():
+    """
+    computes pressure
+    
+    p = -Lap(h) - PI(h) + Bo*cos(alpha)*h
+    
+    compute_u_spatial_ders() before calling this funciton
+    """    
+    return - (U.xx+U.yy) - PI() + Bo_*np.cos(alpha2_)*U.val
     
        
 def investigate_minimum_spacing():
@@ -479,14 +511,30 @@ def Laplace_operator(v, v_dksi, v_deta):
     v_yy += temp
     
     return np.divide(v_xx, J), np.divide(v_yy, J)
+
+def compute_P_spatial_ders():
+    """
+    compute spatial (x, y) derivatives of the pressure
+    """
+    P_dksi = M.dksiCentre.dot(P.val)
+    P_deta = M.detaCentre.dot(P.val)
+    # boudnary conditions: dpdn = 0
+    P_dksi[Ibdy.Left] = 0; P_dksi[Ibdy.Right] = 0
+    P_deta[Ibdy.Top] = 0; P_dksi[Ibdy.Bottom] = 0
+    # 1st derivatives (x, y)
+    P.dx = np.divide(np.multiply(Q.d2eta,P_dksi) - np.multiply(Q.dksideta,P_deta), J)
+    P.dy = np.divide(- np.multiply(Q.dksideta,P_dksi) + np.multiply(Q.d2ksi,P_deta), J)
     
 def compute_Q_spatial_ders():
     """
     compute spatial (ksi, eta) derivatives of the mesh potetial
     """
     # 1st derivatives
-    Q.dksi = M.dksiCentre.dot(Q.val); Q.dksi[Ibdy.Left] = endl_; Q.dksi[Ibdy.Right] = endr_;
-    Q.deta = M.detaCentre.dot(Q.val); Q.deta[Ibdy.Bottom] = endb_; Q.deta[Ibdy.Top] = endt_;
+    Q.dksi = M.dksiCentre.dot(Q.val); 
+    Q.deta = M.detaCentre.dot(Q.val); 
+    # boundary conditions: dQdn|r = r 
+    Q.dksi[Ibdy.Left] = endl_; Q.dksi[Ibdy.Right] = endr_;
+    Q.deta[Ibdy.Bottom] = endb_; Q.deta[Ibdy.Top] = endt_;
     # 2nd derivatives
     temp = np.zeros(NN_); temp[Ibdy.Left] = 25/(6*dksi_)*abs(endl_); temp[Ibdy.Right] = 25/(6*dksi_)*abs(endr_)
     Q.d2ksi = M.d2ksi.dot(Q.val) + temp
@@ -501,6 +549,9 @@ def compute_u_spatial_ders():
     # 1st derivatives (ksi, eta) - not saved in U struct
     U_dksi = M.dksiCentre.dot(U.val)
     U_deta = M.detaCentre.dot(U.val)
+    # boundary conditions: dhdn = 0
+    U_dksi[Ibdy.Left] = 0; U_dksi[Ibdy.Right] = 0
+    U_deta[Ibdy.Top] = 0; U_dksi[Ibdy.Bottom] = 0
     # 1st derivatives (x, y)
     U.dx = np.divide(np.multiply(Q.d2eta,U_dksi) - np.multiply(Q.dksideta,U_deta), J)
     U.dy = np.divide(- np.multiply(Q.dksideta,U_dksi) + np.multiply(Q.d2ksi,U_deta), J)
