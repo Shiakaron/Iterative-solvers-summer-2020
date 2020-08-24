@@ -7,6 +7,7 @@ Created on Tue Aug  4 09:29:12 2020
 import numpy as np
 from scipy.sparse import diags, kron, csc_matrix
 from scipy.fft import dct, idct
+from scipy.optimize import newton_krylov
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
 from matplotlib import cm
@@ -44,7 +45,7 @@ dtmesh_ = 1e-7
 
 #PDE variables
 dtR_ = 5e-2
-alpha2_ = 10*np.pi/180 # angle of inclined surface
+alpha2_ = 10 * np.pi/180 # angle of inclined surface
 n_ = 3 # exponent of the interaction
 m_ = 2 # exponent of the interaction
 Bo_ = None # Bond number rhi*g*Lo**2/sigma
@@ -102,11 +103,11 @@ def main():
     U.new = np.full(NN_, epsilon_)
     
     # initialise droplet
-    err = initialise_droplet(1e-8, 500, False, False)  
+    err = initialise_droplet(1e-8, 500, True, False)  
        
     # check node spacings
-    investigate_minimum_spacing()  
-    investigate_distance_to_contact_line()
+    # investigate_minimum_spacing()  
+    # investigate_distance_to_contact_line()
         
     # check PMA steady state
     check_mesh(1000, 1e-8, 5e-6)     
@@ -117,11 +118,11 @@ def main():
     # evolve_R_explicit(25, 2, 1e-2)
     
     # # check PMA steady state
-    # check_mesh(1000, 1e-7, 1e-4)  
+    # check_mesh(1000, 1e-7, 1e-4) 
     
-    # check node spacings
-    investigate_minimum_spacing() 
-    investigate_distance_to_contact_line()
+    # evolve droplet using pde
+    evolve_with_PDE(1e-2, 2, 1e-5, 10)
+    
     
 
 def initialise_droplet(dtmesh, loops, fromfile, tofile):
@@ -292,35 +293,115 @@ def evolve_R_explicit(pmaloops, Rfinal, tol):
             fig.canvas.flush_events()
     return 0
   
-   
+def evolve_with_PDE(dt0, Tf, tol, pmaloops):
+    """
+    """
+    global J, F, dtmesh_, surf, mesh, mesh2
+    
+    U.old = U.val.copy()
+    # timesteps
+    dt_n = dt0
+    dt_nplus1 = dt0
+    
+    current_time = 0
+    while current_time < Tf:
+        # copy new solution to old
+        U.old = U.val.copy()
+        U.val = U.new.copy()
+        
+        # compute derivatives
+        compute_Q_spatial_ders()
+        J = Q.d2ksi*Q.d2eta - Q.dksideta**2
+        compute_u_spatial_ders()
+        
+        # step in time
+        F = F(U.val, U.xx, U.yy)
+        while True:
+            # predictor stage ??????
+            beta = dt_nplus1/dt_n
+            h_pred = beta*beta*U.old + (1-beta*beta)*U.val+dt_nplus1*(1+beta)*F
+             # solution stage
+            U.new = newton_krylov(lambda u:residual(u, F, dt_nplus1), U.val, verbose=0)
+            LTE = np.linalg.norm((U.new - h_pred)/(1 + 2*(1+beta)/beta))
+            if LTE < tol and current_time != 0:
+                dt_n = dt_nplus1
+                dt_nplus1 *= 0.9*(tol/LTE)**(1/3.)
+                break
+            else:
+                dt_nplus1 /= 2
+        
+        # update mesh
+        loop_pma(dtmesh_, pmaloops)
+        
+        # update time
+        current_time += dt_nplus1
+        
+        #plot
+        if plot3d_bool:
+            # solution
+            surf.remove() 
+            surf = ax.plot_surface(Q.dksi.reshape(Ny_,Nx_), Q.deta.reshape(Ny_,Nx_), U.val.reshape(Ny_,Nx_), \
+                                    cmap=cm.coolwarm, rstride=1, cstride=1, linewidth=0, \
+                                    antialiased=False,alpha=0.5)
+            mesh.remove()
+            mesh = ax.plot_wireframe(Q.dksi.reshape(Ny_,Nx_), Q.deta.reshape(Ny_,Nx_), np.full((Ny_,Nx_),-3), \
+                                     linewidth=0.2)
+            # mesh
+            mesh2.remove()
+            mesh2 = ax2.plot_wireframe(Q.dksi.reshape(Ny_,Nx_), Q.deta.reshape(Ny_,Nx_), np.zeros((Ny_,Nx_)), \
+                                       linewidth=0.2, rstride=1, cstride=1)
+            fig.canvas.draw()
+            fig.canvas.flush_events()
+        
+        
+    
+    
+def residual(u, F, dt):
+    """
+    """
+    global N_
+    # laplacian terms
+    u_xx, u_yy = Laplace_operator(u.reshape(N_,N_), M.dksiCentre.dot(u), M.detaCentre.dot(u))
+    # pressure
+    pnew = p(u, u_xx, u_yy)
+    p_dksi = M.dksiCentre.dot(pnew); p_deta = M.detaCentre.dot(pnew)
+    p_dksi[Ibdy.Left] = 0; p_dksi[Ibdy.Right] = 0
+    p_deta[Ibdy.Top] = 0; p_deta[Ibdy.Bottom] = 0
+    p_dx = np.divide(np.multiply(Q.d2eta,p_dksi) - np.multiply(Q.dksideta,p_deta), J)
+    p_dy = np.divide(- np.multiply(Q.dksideta,p_dksi) + np.multiply(Q.d2ksi,p_deta), J)
+    # Crank Nicolson term
+    A = (p_dx - Bo_*np.sin(alpha2_)/epsilon2_)*(u**3)/3
+    F2 = np.divide(Q.d2eta*M.dksiCentre.dot(A) - Q.dksideta*M.detaCentre.dot(A) 
+                     - Q.dksideta*M.dksiCentre.dot(p_dy) + Q.d2ksi*M.detaCentre.dot(p_dy), J)
+    return u - U.val - dt*(F2 - F)/2
+    
 
-def F():
+def F(h, hxx, hyy):
     """
     dhdt = F(h,p)   
     
     h = U.val (for now)
     """
+    P.val= p(h, hxx, hyy)
     compute_P_spatial_ders()
-    A = (P.dx - Bo_*np.sin(alpha2_)/epsilon2_)*(U.val**3)/3
+    A = (P.dx - Bo_*np.sin(alpha2_)/epsilon2_)*(h**3)/3
     dhdt = np.divide(Q.d2eta*M.dksiCentre.dot(A) - Q.dksideta*M.detaCentre.dot(A) 
                      - Q.dksideta*M.dksiCentre.dot(P.dy) + Q.d2ksi*M.detaCentre.dot(P.dy), J)
     return dhdt
     
-def PI():
+def PI(h):
     """
     disjoining pressure term
     """
-    return (n_-1)*(m_-1)*sigma_*(1-np.cos(theta_))*(np.divide(epsilon_, U.val)**n_-np.divide(epsilon_, U.val)**m_)/(epsilon_*(n_-m_))
+    return (n_-1)*(m_-1)*sigma_*(1-np.cos(theta_))*(np.divide(epsilon_, h)**n_-np.divide(epsilon_, h)**m_)/(epsilon_*(n_-m_))
                         
-def p():
+def p(h, hxx, hyy):
     """
     computes pressure
     
     p = -Lap(h) - PI(h) + Bo*cos(alpha)*h
-    
-    compute_u_spatial_ders() before calling this funciton
     """    
-    return - (U.xx+U.yy) - PI() + Bo_*np.cos(alpha2_)*U.val
+    return - (hxx+hyy) - PI(h) + Bo_*np.cos(alpha2_)*h
     
        
 def investigate_minimum_spacing():
@@ -536,7 +617,7 @@ def compute_P_spatial_ders():
     P_deta = M.detaCentre.dot(P.val)
     # boudnary conditions: dpdn = 0
     P_dksi[Ibdy.Left] = 0; P_dksi[Ibdy.Right] = 0
-    P_deta[Ibdy.Top] = 0; P_dksi[Ibdy.Bottom] = 0
+    P_deta[Ibdy.Top] = 0; P_deta[Ibdy.Bottom] = 0
     # 1st derivatives (x, y)
     P.dx = np.divide(np.multiply(Q.d2eta,P_dksi) - np.multiply(Q.dksideta,P_deta), J)
     P.dy = np.divide(- np.multiply(Q.dksideta,P_dksi) + np.multiply(Q.d2ksi,P_deta), J)
