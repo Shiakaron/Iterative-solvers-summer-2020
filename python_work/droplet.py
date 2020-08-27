@@ -18,22 +18,22 @@ import os
 np.set_printoptions(edgeitems=6, suppress=True)
 
 #GLOBAL parameters
-R_ = 2 # radius of droplet
+R_ = 1.8 # radius of droplet
 a_ = 100
-epsilon_ = 1e-5 # thin liquid layer height (thickness of precursor film = h* ?)
+epsilon_ = 3e-1 # thin liquid layer height (thickness of precursor film = h* ?)
 V_, Vf_ = 0, 1 # volume of droplet (starts from 0 and stops at 1)
 Vsteps_ = 100 # number of steps for droplet initialisation
 
 #GLOBAL simulation variables
-Nx_, Ny_ = 61, 61 # grid points
+Nx_, Ny_ = 121, 121 # grid points
 NN_ = Nx_*Ny_ # total number of points
 smoothing_iters_ = 4 # number of smoothing iterations per time step 
 endl_, endr_ = -3, 3 # domain limits
 endb_, endt_ = -3, 3
-dx_ = endr_ - endl_ # domain size
-dy_ = endt_ - endb_ 
-dksi_ = dx_/(Nx_-1) # node spacing
-deta_ = dy_/(Ny_-1)
+Dx_ = endr_ - endl_ # domain size Lo
+Dy_ = endt_ - endb_ 
+dksi_ = Dx_/(Nx_-1) # node spacing
+deta_ = Dy_/(Ny_-1)
 dksi2_ = dksi_*dksi_
 deta2_ = deta_*deta_
 
@@ -45,11 +45,13 @@ dtmesh_ = 1e-7
 
 #PDE variables
 dtR_ = 5e-2
-alpha2_ = 10 * np.pi/180 # angle of inclined surface
+alpha2_ = 0# 10 * np.pi/180 # angle of inclined surface
 n_ = 3 # exponent of the interaction
-m_ = 2 # exponent of the interaction
-Bo_ = None # Bond number rhi*g*Lo**2/sigma
-epsilon2_ = None # ratio of characteristic droplet thickness and extent of substrate Ho/Lo
+m_ = 6 # exponent of the interaction
+Bo_ = 0.01 # Bond number rho*g*Lo**2/sigma
+epsilon2_ = 1/Dy_ # ratio of characteristic droplet thickness and extent of substrate Ho/Lo ( Ho ~ 1 ???)
+
+# not implemented for now
 sigma_ = None # surface tension constant
 theta_ = None # contact angle - how to calculate?
 
@@ -103,14 +105,14 @@ def main():
     U.new = np.full(NN_, epsilon_)
     
     # initialise droplet
-    err = initialise_droplet(1e-8, 500, True, False)  
+    err = initialise_droplet(1e-8, 50, False, True)  
        
     # check node spacings
     # investigate_minimum_spacing()  
     # investigate_distance_to_contact_line()
         
     # check PMA steady state
-    check_mesh(1000, 1e-8, 5e-6)     
+    check_mesh(10000, 1e-9, 5e-6)     
     
     # evolve droplet radius explicitely and update mesh
     # alpha_ = 0.001
@@ -121,7 +123,7 @@ def main():
     # check_mesh(1000, 1e-7, 1e-4) 
     
     # evolve droplet using pde
-    evolve_with_PDE(1e-2, 2, 1e-5, 10)
+    evolve_with_PDE(1e-7, 1, 1e-2, 1e-8, 1)
     
     
 
@@ -216,7 +218,7 @@ def check_mesh(iters, dt, atol):
         Qdksiold = Q.dksi.copy()
         Qdetaold = Q.deta.copy()
         # plot every once in a while
-        if plot3d_bool and i%100 == 0:
+        if plot3d_bool and i%1000 == 0:
             # solution
             surf.remove() 
             surf = ax.plot_surface(Q.dksi.reshape(Ny_,Nx_), Q.deta.reshape(Ny_,Nx_), U.val.reshape(Ny_,Nx_), \
@@ -293,54 +295,62 @@ def evolve_R_explicit(pmaloops, Rfinal, tol):
             fig.canvas.flush_events()
     return 0
   
-def evolve_with_PDE(dt0, Tf, tol, pmaloops):
+def evolve_with_PDE(dt, Tf, tol, dtmesh, pmaloops):
     """
     """
-    global J, F, dtmesh_, surf, mesh, mesh2
+    global J, dtmesh_, surf, mesh, mesh2
     
-    U.old = U.val.copy()
+    # U.old = U.val.copy()
     # timesteps
-    dt_n = dt0
-    dt_nplus1 = dt0
+    # dt_n = dt
+    dt_nplus1 = dt
     
     current_time = 0
     while current_time < Tf:
         # copy new solution to old
-        U.old = U.val.copy()
+        # U.old = U.val.copy()
         U.val = U.new.copy()
-        
         # compute derivatives
         compute_Q_spatial_ders()
         J = Q.d2ksi*Q.d2eta - Q.dksideta**2
         compute_u_spatial_ders()
+        P.val = pressure(U.val, U.xx, U.yy)
+        compute_P_spatial_ders()
+    
         
-        # step in time
-        F = F(U.val, U.xx, U.yy)
-        while True:
+        # rhs term
+        F = pde_rhs(U.val, U.xx, U.yy)
+        
+        # while True:
             # predictor stage ??????
-            beta = dt_nplus1/dt_n
-            h_pred = beta*beta*U.old + (1-beta*beta)*U.val+dt_nplus1*(1+beta)*F
-             # solution stage
-            U.new = newton_krylov(lambda u:residual(u, F, dt_nplus1), U.val, verbose=0)
-            LTE = np.linalg.norm((U.new - h_pred)/(1 + 2*(1+beta)/beta))
-            if LTE < tol and current_time != 0:
-                dt_n = dt_nplus1
-                dt_nplus1 *= 0.9*(tol/LTE)**(1/3.)
-                break
-            else:
-                dt_nplus1 /= 2
+            # beta = dt_nplus1/dt_n
+            # h_pred = beta*beta*U.old + (1-beta*beta)*U.val + dt_nplus1*(1 + beta)*F
+            # solution stage
+            # U.new = newton_krylov(lambda u:residual(u, F, dt_nplus1), U.val, verbose=0)
+            # LTE = np.linalg.norm((U.new - h_pred)/(1 + 2*(1+beta)/beta))
+            # break
+            # if LTE < tol:
+            #     dt_n = dt_nplus1
+            #     dt_nplus1 *= 0.9*(tol/LTE)**(1/3.)
+            #     break
+            # else:
+            #     dt_nplus1 /= 2
+        
+        U.new = newton_krylov(lambda u:residual(u, F, dt_nplus1), U.val, verbose=1, maxiter=20)
         
         # update mesh
-        loop_pma(dtmesh_, pmaloops)
+        loop_pma(dtmesh, pmaloops)
         
         # update time
         current_time += dt_nplus1
-        
+        print(dt_nplus1, current_time)
+        # bbb = (U.new-U.val).reshape(Ny_,Nx_)
+                
         #plot
         if plot3d_bool:
             # solution
             surf.remove() 
-            surf = ax.plot_surface(Q.dksi.reshape(Ny_,Nx_), Q.deta.reshape(Ny_,Nx_), U.val.reshape(Ny_,Nx_), \
+            surf = ax.plot_surface(Q.dksi.reshape(Ny_,Nx_), Q.deta.reshape(Ny_,Nx_), U.new.reshape(Ny_,Nx_), \
                                     cmap=cm.coolwarm, rstride=1, cstride=1, linewidth=0, \
                                     antialiased=False,alpha=0.5)
             mesh.remove()
@@ -357,33 +367,27 @@ def evolve_with_PDE(dt0, Tf, tol, pmaloops):
     
     
 def residual(u, F, dt):
-    """
-    """
     global N_
     # laplacian terms
-    u_xx, u_yy = Laplace_operator(u.reshape(N_,N_), M.dksiCentre.dot(u), M.detaCentre.dot(u))
-    # pressure
-    pnew = p(u, u_xx, u_yy)
-    p_dksi = M.dksiCentre.dot(pnew); p_deta = M.detaCentre.dot(pnew)
-    p_dksi[Ibdy.Left] = 0; p_dksi[Ibdy.Right] = 0
-    p_deta[Ibdy.Top] = 0; p_deta[Ibdy.Bottom] = 0
-    p_dx = np.divide(np.multiply(Q.d2eta,p_dksi) - np.multiply(Q.dksideta,p_deta), J)
-    p_dy = np.divide(- np.multiply(Q.dksideta,p_dksi) + np.multiply(Q.d2ksi,p_deta), J)
+    u_xx, u_yy = Laplace_operator(u.reshape(Ny_,Nx_), M.dksiCentre.dot(u), M.detaCentre.dot(u))
+    # pressure and its derivatives
+    pnew = pressure(u, u_xx, u_yy)
+    P_dksi = M.dksiCentre.dot(pnew); P_deta = M.detaCentre.dot(pnew)
+    P_dksi[Ibdy.Left] = 0; P_dksi[Ibdy.Right] = 0
+    P_deta[Ibdy.Top] = 0; P_deta[Ibdy.Bottom] = 0
+    pdx = np.divide(np.multiply(Q.d2eta,P_dksi) - np.multiply(Q.dksideta,P_deta), J)
+    pdy = np.divide(- np.multiply(Q.dksideta,P_dksi) + np.multiply(Q.d2ksi,P_deta), J)
     # Crank Nicolson term
-    A = (p_dx - Bo_*np.sin(alpha2_)/epsilon2_)*(u**3)/3
-    F2 = np.divide(Q.d2eta*M.dksiCentre.dot(A) - Q.dksideta*M.detaCentre.dot(A) 
-                     - Q.dksideta*M.dksiCentre.dot(p_dy) + Q.d2ksi*M.detaCentre.dot(p_dy), J)
-    return u - U.val - dt*(F2 - F)/2
+    A = (pdx - Bo_*np.sin(alpha2_)/epsilon2_)*(u**3)/3
+    B = pdy*(u**3)/3
+    F2 = np.divide(Q.d2eta*M.dksiCentre.dot(A) - Q.dksideta*M.detaCentre.dot(A), J) \
+       + np.divide(- Q.dksideta*M.dksiCentre.dot(B) + Q.d2ksi*M.detaCentre.dot(B), J)
+    return (u - U.val)/dt - (F2 + F)/2
     
-
-def F(h, hxx, hyy):
+def pde_rhs(h, hxx, hyy):
     """
-    dhdt = F(h,p)   
-    
-    h = U.val (for now)
+    dhdt = F(h,p)
     """
-    P.val= p(h, hxx, hyy)
-    compute_P_spatial_ders()
     A = (P.dx - Bo_*np.sin(alpha2_)/epsilon2_)*(h**3)/3
     dhdt = np.divide(Q.d2eta*M.dksiCentre.dot(A) - Q.dksideta*M.detaCentre.dot(A) 
                      - Q.dksideta*M.dksiCentre.dot(P.dy) + Q.d2ksi*M.detaCentre.dot(P.dy), J)
@@ -393,12 +397,11 @@ def PI(h):
     """
     disjoining pressure term
     """
-    return (n_-1)*(m_-1)*sigma_*(1-np.cos(theta_))*(np.divide(epsilon_, h)**n_-np.divide(epsilon_, h)**m_)/(epsilon_*(n_-m_))
+    return (n_-1)*(m_-1)*((np.divide(epsilon_, h)**m_ )- (np.divide(epsilon_, h)**n_))/(2*epsilon_*(n_-m_))
                         
-def p(h, hxx, hyy):
+def pressure(h, hxx, hyy):
     """
-    computes pressure
-    
+    compute pressure
     p = -Lap(h) - PI(h) + Bo*cos(alpha)*h
     """    
     return - (hxx+hyy) - PI(h) + Bo_*np.cos(alpha2_)*h
@@ -473,8 +476,7 @@ def compute_U():
     return epsilon_ + (1-epsilon_)*H(G(np.sqrt(Q.dksi*Q.dksi+Q.deta*Q.deta)))
 
 def H(psi):
-    ret = 4*V_*(1-psi*psi/(R_*R_))/(R_*R_)
-    return np.where(ret > 0, ret, 0)
+    return 4*V_*(1-psi*psi/(R_*R_))/(R_*R_)
 
 def G(x):
     return R_ + np.log((1+np.exp(-2*a_*(x+R_)))/(1+np.exp(-2*a_*(x-R_))))/(2*a_)

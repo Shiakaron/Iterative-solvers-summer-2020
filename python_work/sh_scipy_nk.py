@@ -58,7 +58,7 @@ for s in range(Nsteps):
     UoUoUo = np.multiply(Uo,UoUo)
     
     # NEWTON KRYLOV
-    U = newton_krylov(residual, Uo, verbose=0)
+    U = newton_krylov(residual, Uo, verbose=1)
 
     # plot
     if s%plotSteps==0:
