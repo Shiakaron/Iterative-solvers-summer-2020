@@ -18,7 +18,7 @@ import os
 np.set_printoptions(edgeitems=6, suppress=True)
 
 #GLOBAL parameters
-R_ = 1.4 # radius of droplet
+R_ = 1 # radius of droplet
 a_ = 100
 epsilon_ = 1e-1 # thin liquid layer height (thickness of precursor film = h*)
 V_, Vf_ = 0, 1 # volume of droplet (starts from 0 and stops at 1)
@@ -104,7 +104,7 @@ def main():
     U.new = np.full(NN_, epsilon_)
     
     # initialise droplet
-    err = initialise_droplet(1000, 1e-8, 10, True, True)  
+    err = initialise_droplet(500, 1e-8, 5, True, True)  
        
     # check node spacings
     # investigate_minimum_spacing()  
@@ -122,7 +122,7 @@ def main():
     # check_mesh(1000, 1e-7, 1e-4) 
     
     # evolve droplet using pde
-    evolve_with_PDE(1e-5, 1, 1e-2, 1e-8, 10)
+    evolve_with_PDE(1e-4, 1000, 1e-2, 1e-7, 10)
     
     
 
@@ -294,21 +294,14 @@ def evolve_R_explicit(pmaloops, Rfinal, tol):
             fig.canvas.flush_events()
     return 0
   
-def evolve_with_PDE(dt, Tf, tol, dtmesh, pmaloops):
-    """
-    """
+def evolve_with_PDE(dt, iterMax, tol, dtmesh, pmaloops):
     global J, dtmesh_, surf, mesh, mesh2
-    
-    # U.old = U.val.copy()
-    # timesteps
-    # dt_n = dt
-    dt_nplus1 = dt
-    
     current_time = 0
     iteration = 1
-    while current_time < Tf:
+    scale = 1
+    while iteration < iterMax:
         # copy new solution to old
-        # U.old = U.val.copy()
+        dt_n = dt*scale
         U.val = U.new.copy()
         # compute derivatives
         compute_Q_spatial_ders()
@@ -316,38 +309,14 @@ def evolve_with_PDE(dt, Tf, tol, dtmesh, pmaloops):
         compute_u_spatial_ders()
         P.val = pressure(U.val, U.xx, U.yy)
         compute_P_spatial_ders()
-    
-        
         # rhs term
         F = pde_rhs(U.val, U.xx, U.yy)
-        
-        # while True:
-            # predictor stage ??????
-            # beta = dt_nplus1/dt_n
-            # h_pred = beta*beta*U.old + (1-beta*beta)*U.val + dt_nplus1*(1 + beta)*F
-            # solution stage
-            # U.new = newton_krylov(lambda u:residual(u, F, dt_nplus1), U.val, verbose=0)
-            # LTE = np.linalg.norm((U.new - h_pred)/(1 + 2*(1+beta)/beta))
-            # break
-            # if LTE < tol:
-            #     dt_n = dt_nplus1
-            #     dt_nplus1 *= 0.9*(tol/LTE)**(1/3.)
-            #     break
-            # else:
-            #     dt_nplus1 /= 2
-        
-        U.new = newton_krylov(lambda u:residual(u, F, dt_nplus1), U.val, verbose=1, maxiter=20)
-        
-        # update mesh
-        loop_pma(dtmesh, pmaloops)
-        
-        # update time
-        current_time += dt_nplus1
-        print(iteration, current_time, U.new.max())
-        # bbb = (U.new-U.val).reshape(Ny_,Nx_)
-        iteration += 1        
+        # update timestep, solution, mesh and current_time
+        U.new = newton_krylov(lambda u:residual(u, F, dt_n), U.val, verbose=1, maxiter=20)
+        loop_pma(dtmesh, int(pmaloops*(np.log(scale)+1))
+        current_time += dt_n
         #plot
-        if plot3d_bool and iteration%100 == 0:
+        if plot3d_bool and (iteration%20 == 0 or iteration == 1):
             # solution
             surf.remove() 
             surf = ax.plot_surface(Q.dksi.reshape(Ny_,Nx_), Q.deta.reshape(Ny_,Nx_), U.new.reshape(Ny_,Nx_), \
@@ -362,6 +331,10 @@ def evolve_with_PDE(dt, Tf, tol, dtmesh, pmaloops):
                                        linewidth=0.2, rstride=1, cstride=1)
             fig.canvas.draw()
             fig.canvas.flush_events()
+        # increment iteration and print statement
+        print(iteration, dt, "*", scale, "=", dt_n, current_time)
+        iteration += 1
+        scale += np.exp(-10*np.linalg.norm(U.new-U.val))
         
         
 def residual(u, F, dt):
