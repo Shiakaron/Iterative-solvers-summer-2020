@@ -18,9 +18,9 @@ import os
 np.set_printoptions(edgeitems=6, suppress=True)
 
 #GLOBAL parameters
-R_ = 1 # radius of droplet
+R_ = 1.4 # radius of droplet
 a_ = 100
-epsilon_ = 1e-1 # thin liquid layer height (thickness of precursor film = h* ?)
+epsilon_ = 1e-1 # thin liquid layer height (thickness of precursor film = h*)
 V_, Vf_ = 0, 1 # volume of droplet (starts from 0 and stops at 1)
 
 #GLOBAL simulation variables
@@ -44,7 +44,7 @@ dtmesh_ = 1e-7
 
 #PDE variables
 dtR_ = 5e-2
-alpha2_ = 0# 10 * np.pi/180 # angle of inclined surface
+alpha2_ = 0 # 10 * np.pi/180 # angle of inclined surface
 n_ = 6 # exponent of the interaction (not well defined weaker interaction term)
 m_ = 3 # exponent of the interaction (known to be 3)
 Bo_ = 0.01 # Bond number rho*g*Lo**2/sigma
@@ -104,7 +104,7 @@ def main():
     U.new = np.full(NN_, epsilon_)
     
     # initialise droplet
-    err = initialise_droplet(1000, 1e-8, 10, False, True)  
+    err = initialise_droplet(1000, 1e-8, 10, True, True)  
        
     # check node spacings
     # investigate_minimum_spacing()  
@@ -122,7 +122,7 @@ def main():
     # check_mesh(1000, 1e-7, 1e-4) 
     
     # evolve droplet using pde
-    evolve_with_PDE(1e-6, 1, 1e-2, 1e-8, 10)
+    evolve_with_PDE(1e-5, 1, 1e-2, 1e-8, 10)
     
     
 
@@ -161,7 +161,7 @@ def initialise_droplet(Vsteps, dtmesh, loops, fromfile, tofile):
         #solve PMA and update mesh 
         loop_pma(dtmesh, loops)
         # plot every once in a while
-        if plot3d_bool and i%25 == 0:
+        if plot3d_bool and i%100 == 0:
             # solution
             surf.remove() 
             surf = ax.plot_surface(Q.dksi.reshape(Ny_,Nx_), Q.deta.reshape(Ny_,Nx_), U.val.reshape(Ny_,Nx_), \
@@ -343,7 +343,7 @@ def evolve_with_PDE(dt, Tf, tol, dtmesh, pmaloops):
         
         # update time
         current_time += dt_nplus1
-        print(iteration, current_time)
+        print(iteration, current_time, U.new.max())
         # bbb = (U.new-U.val).reshape(Ny_,Nx_)
         iteration += 1        
         #plot
@@ -377,8 +377,8 @@ def residual(u, F, dt):
     # Crank Nicolson term
     A = (pdx - Bo_*np.sin(alpha2_)/epsilon2_)*(u**3)/3
     B = pdy*(u**3)/3
-    F2 = np.divide(Q.d2eta*M.dksiCentre.dot(A) - Q.dksideta*M.detaCentre.dot(A), J) \
-       + np.divide(- Q.dksideta*M.dksiCentre.dot(B) + Q.d2ksi*M.detaCentre.dot(B), J)
+    F2 = np.divide(Q.d2eta*M.dksiCentre.dot(A) - Q.dksideta*M.detaCentre.dot(A) 
+                     - Q.dksideta*M.dksiCentre.dot(B) + Q.d2ksi*M.detaCentre.dot(B), J)
     return (u - U.val) - dt*(F2 + F)/2
     
 def pde_rhs(h, hxx, hyy):
@@ -400,9 +400,9 @@ def PI(h):
 def pressure(h, hxx, hyy):
     """
     compute pressure
-    p = -Lap(h) - PI(h) + Bo*cos(alpha)*h
+    p = -Lap(h) -/+ PI(h) + Bo*cos(alpha)*h
     """    
-    return - (hxx+hyy) - PI(h) + Bo_*np.cos(alpha2_)*h
+    return - (hxx+hyy) + PI(h) + Bo_*np.cos(alpha2_)*h
     
        
 def investigate_minimum_spacing():
