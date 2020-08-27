@@ -46,8 +46,8 @@ dtmesh_ = 1e-7
 #PDE variables
 dtR_ = 5e-2
 alpha2_ = 0# 10 * np.pi/180 # angle of inclined surface
-n_ = 3 # exponent of the interaction
-m_ = 6 # exponent of the interaction
+n_ = 6 # exponent of the interaction (not well defined weaker interaction term)
+m_ = 3 # exponent of the interaction (known to be 3)
 Bo_ = 0.01 # Bond number rho*g*Lo**2/sigma
 epsilon2_ = 1/Dy_ # ratio of characteristic droplet thickness and extent of substrate Ho/Lo ( Ho ~ 1 ???)
 
@@ -105,14 +105,14 @@ def main():
     U.new = np.full(NN_, epsilon_)
     
     # initialise droplet
-    err = initialise_droplet(1e-8, 50, False, True)  
+    err = initialise_droplet(1e-8, 50, True, True)  
        
     # check node spacings
     # investigate_minimum_spacing()  
     # investigate_distance_to_contact_line()
         
     # check PMA steady state
-    check_mesh(10000, 1e-9, 5e-6)     
+    # check_mesh(10000, 1e-9, 5e-6)     
     
     # evolve droplet radius explicitely and update mesh
     # alpha_ = 0.001
@@ -123,7 +123,7 @@ def main():
     # check_mesh(1000, 1e-7, 1e-4) 
     
     # evolve droplet using pde
-    evolve_with_PDE(1e-7, 1, 1e-2, 1e-8, 1)
+    evolve_with_PDE(3e-7, 1, 1e-2, 1e-8, 5)
     
     
 
@@ -306,6 +306,7 @@ def evolve_with_PDE(dt, Tf, tol, dtmesh, pmaloops):
     dt_nplus1 = dt
     
     current_time = 0
+    iteration = 1
     while current_time < Tf:
         # copy new solution to old
         # U.old = U.val.copy()
@@ -343,11 +344,11 @@ def evolve_with_PDE(dt, Tf, tol, dtmesh, pmaloops):
         
         # update time
         current_time += dt_nplus1
-        print(dt_nplus1, current_time)
+        print(iteration, current_time)
         # bbb = (U.new-U.val).reshape(Ny_,Nx_)
-                
+        iteration += 1        
         #plot
-        if plot3d_bool:
+        if plot3d_bool and iteration%100 == 0:
             # solution
             surf.remove() 
             surf = ax.plot_surface(Q.dksi.reshape(Ny_,Nx_), Q.deta.reshape(Ny_,Nx_), U.new.reshape(Ny_,Nx_), \
@@ -364,10 +365,7 @@ def evolve_with_PDE(dt, Tf, tol, dtmesh, pmaloops):
             fig.canvas.flush_events()
         
         
-    
-    
 def residual(u, F, dt):
-    global N_
     # laplacian terms
     u_xx, u_yy = Laplace_operator(u.reshape(Ny_,Nx_), M.dksiCentre.dot(u), M.detaCentre.dot(u))
     # pressure and its derivatives
@@ -382,15 +380,16 @@ def residual(u, F, dt):
     B = pdy*(u**3)/3
     F2 = np.divide(Q.d2eta*M.dksiCentre.dot(A) - Q.dksideta*M.detaCentre.dot(A), J) \
        + np.divide(- Q.dksideta*M.dksiCentre.dot(B) + Q.d2ksi*M.detaCentre.dot(B), J)
-    return (u - U.val)/dt - (F2 + F)/2
+    return (u - U.val) - dt*(F2 + F)/2
     
 def pde_rhs(h, hxx, hyy):
     """
     dhdt = F(h,p)
     """
     A = (P.dx - Bo_*np.sin(alpha2_)/epsilon2_)*(h**3)/3
+    B = P.dy*(h**3)/3
     dhdt = np.divide(Q.d2eta*M.dksiCentre.dot(A) - Q.dksideta*M.detaCentre.dot(A) 
-                     - Q.dksideta*M.dksiCentre.dot(P.dy) + Q.d2ksi*M.detaCentre.dot(P.dy), J)
+                     - Q.dksideta*M.dksiCentre.dot(B) + Q.d2ksi*M.detaCentre.dot(B), J)
     return dhdt
     
 def PI(h):
