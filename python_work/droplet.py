@@ -18,14 +18,13 @@ import os
 np.set_printoptions(edgeitems=6, suppress=True)
 
 #GLOBAL parameters
-R_ = 1.8 # radius of droplet
+R_ = 1 # radius of droplet
 a_ = 100
-epsilon_ = 3e-1 # thin liquid layer height (thickness of precursor film = h* ?)
+epsilon_ = 1e-1 # thin liquid layer height (thickness of precursor film = h* ?)
 V_, Vf_ = 0, 1 # volume of droplet (starts from 0 and stops at 1)
-Vsteps_ = 100 # number of steps for droplet initialisation
 
 #GLOBAL simulation variables
-Nx_, Ny_ = 121, 121 # grid points
+Nx_, Ny_ = 61, 61 # grid points
 NN_ = Nx_*Ny_ # total number of points
 smoothing_iters_ = 4 # number of smoothing iterations per time step 
 endl_, endr_ = -3, 3 # domain limits
@@ -105,7 +104,7 @@ def main():
     U.new = np.full(NN_, epsilon_)
     
     # initialise droplet
-    err = initialise_droplet(1e-8, 50, True, True)  
+    err = initialise_droplet(1000, 1e-8, 10, False, True)  
        
     # check node spacings
     # investigate_minimum_spacing()  
@@ -123,17 +122,17 @@ def main():
     # check_mesh(1000, 1e-7, 1e-4) 
     
     # evolve droplet using pde
-    evolve_with_PDE(3e-7, 1, 1e-2, 1e-8, 5)
+    evolve_with_PDE(1e-6, 1, 1e-2, 1e-8, 10)
     
     
 
-def initialise_droplet(dtmesh, loops, fromfile, tofile):
+def initialise_droplet(Vsteps, dtmesh, loops, fromfile, tofile):
     print("initialising droplet")
     global J, V_, surf, mesh, mesh2
     if fromfile:
         # initialise from file
         read_from_file("initdrop_rect_"+str(R_)+"_"+str(Nx_)+"-"+str(Ny_)+"_"+str(a_)+\
-                       "_"+str(alpha_)+"_"+str(gamma_)+"_"+str(C_)+".txt")
+                       "_"+str(epsilon_)+"_"+str(alpha_)+"_"+str(gamma_)+"_"+str(C_)+".txt")
         V_ = Vf_
         # plot
         compute_Q_spatial_ders()
@@ -149,20 +148,20 @@ def initialise_droplet(dtmesh, loops, fromfile, tofile):
         fig.canvas.flush_events()
         return 0
     # else steadily inflate drop 
-    for i in range(1,Vsteps_+1):
+    for i in range(1,Vsteps+1):
         U.val = U.new.copy()
         #compute derivatives
         compute_Q_spatial_ders()
         J = Q.d2ksi*Q.d2eta - Q.dksideta**2
         compute_u_spatial_ders()
         #update solution
-        V_ = Vf_*i/Vsteps_
+        V_ = Vf_*i/Vsteps
         U.new = compute_U()
         print(V_, U.new.max())
         #solve PMA and update mesh 
         loop_pma(dtmesh, loops)
         # plot every once in a while
-        if plot3d_bool:
+        if plot3d_bool and i%25 == 0:
             # solution
             surf.remove() 
             surf = ax.plot_surface(Q.dksi.reshape(Ny_,Nx_), Q.deta.reshape(Ny_,Nx_), U.val.reshape(Ny_,Nx_), \
@@ -182,7 +181,7 @@ def initialise_droplet(dtmesh, loops, fromfile, tofile):
     # write values to a file for quick access??
     if tofile:
         write_to_file("initdrop_rect_"+str(R_)+"_"+str(Nx_)+"-"+str(Ny_)+"_"+str(a_)+\
-                       "_"+str(alpha_)+"_"+str(gamma_)+"_"+str(C_)+".txt")
+                       "_"+str(epsilon_)+"_"+str(alpha_)+"_"+str(gamma_)+"_"+str(C_)+".txt")
     return 0
 
 def check_mesh(iters, dt, atol):
