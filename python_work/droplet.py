@@ -14,13 +14,15 @@ from matplotlib import cm
 from matplotlib.colors import LightSource
 import csv
 import os
+from scipy.integrate import odeint
+from scipy.interpolate import interp1d
 
 np.set_printoptions(edgeitems=6, suppress=True)
 
 #GLOBAL parameters
 R_ = 1 # radius of droplet
 a_ = 100
-epsilon_ = 1e-1 # thin liquid layer height (thickness of precursor film = h*)
+epsilon_ = 5e-3 # thin liquid layer height (thickness of precursor film = h*)
 V_, Vf_ = 0, 1 # volume of droplet (starts from 0 and stops at 1)
 
 #GLOBAL simulation variables
@@ -104,14 +106,14 @@ def main():
     U.new = np.full(NN_, epsilon_)
     
     # initialise droplet
-    err = initialise_droplet(500, 1e-8, 5, True, True)  
+    err = initialise_droplet(500, 5e-9, 20, True, True)  
        
     # check node spacings
     # investigate_minimum_spacing()  
     # investigate_distance_to_contact_line()
         
     # check PMA steady state
-    # check_mesh(10000, 1e-9, 5e-6)     
+    # check_mesh(10000, 1e-9, 1e-8)     
     
     # evolve droplet radius explicitely and update mesh
     # alpha_ = 0.001
@@ -122,7 +124,7 @@ def main():
     # check_mesh(1000, 1e-7, 1e-4) 
     
     # evolve droplet using pde
-    evolve_with_PDE(1e-4, 1000, 1e-2, 1e-7, 10)
+    evolve_with_PDE(1e-4, 1000, 1e-2, 3e-9, 300)
     
     
 
@@ -212,7 +214,7 @@ def check_mesh(iters, dt, atol):
         # find differences between old and new mesh
         diff_ksi = Q.dksi - Qdksiold; diff_eta = Q.deta - Qdetaold
         diff_squared = np.sqrt(diff_ksi**2 + diff_eta**2)
-        print((i+1), " / ", iters, ": ", diff_squared.max())
+        # print((i+1), " / ", iters, ": ", diff_squared.max())
         # update Qdksiold and Qdetaold
         Qdksiold = Q.dksi.copy()
         Qdetaold = Q.deta.copy()
@@ -295,7 +297,12 @@ def evolve_R_explicit(pmaloops, Rfinal, tol):
     return 0
   
 def evolve_with_PDE(dt, iterMax, tol, dtmesh, pmaloops):
-    global J, dtmesh_, surf, mesh, mesh2
+    global J, dtmesh_, surf, mesh, mesh2, radiusline, R_
+    # to get radius at certain times
+    tode = np.concatenate(([0],np.logspace(-5,2)))
+    Rode = odeint(asympode,R_, tode)
+    R_func = interp1d(tode,Rode[:,0],'cubic')
+    # solve
     current_time = 0
     iteration = 1
     scale = 1
@@ -312,11 +319,11 @@ def evolve_with_PDE(dt, iterMax, tol, dtmesh, pmaloops):
         # rhs term
         F = pde_rhs(U.val, U.xx, U.yy)
         # update timestep, solution, mesh and current_time
-        U.new = newton_krylov(lambda u:residual(u, F, dt_n), U.val, verbose=1, maxiter=20)
-        loop_pma(dtmesh, int(pmaloops*(np.log(scale)+1))
+        U.new = newton_krylov(lambda u:residual(u, F, dt_n), U.val, verbose=1, maxiter=20, f_tol=1e-7)
+        loop_pma(dtmesh, pmaloops) # int(pmaloops*(np.log(scale)/2+1)))
         current_time += dt_n
         #plot
-        if plot3d_bool and (iteration%20 == 0 or iteration == 1):
+        if plot3d_bool and (iteration%10 == 0 or iteration == 1):
             # solution
             surf.remove() 
             surf = ax.plot_surface(Q.dksi.reshape(Ny_,Nx_), Q.deta.reshape(Ny_,Nx_), U.new.reshape(Ny_,Nx_), \
@@ -326,16 +333,25 @@ def evolve_with_PDE(dt, iterMax, tol, dtmesh, pmaloops):
             mesh = ax.plot_wireframe(Q.dksi.reshape(Ny_,Nx_), Q.deta.reshape(Ny_,Nx_), np.full((Ny_,Nx_),-3), \
                                      linewidth=0.2)
             # mesh
-            mesh2.remove()
+            ax2.clear()
+            ax2.w_zaxis.line.set_lw(0.)
+            ax2.set_zticks([])
+            ax2.grid(False)
             mesh2 = ax2.plot_wireframe(Q.dksi.reshape(Ny_,Nx_), Q.deta.reshape(Ny_,Nx_), np.zeros((Ny_,Nx_)), \
-                                       linewidth=0.2, rstride=1, cstride=1)
+                                       linewidth=0.2, rstride=1, cstride=1,)
+            R_ = R_func(current_time)
+            radiusline = ax2.plot3D(R_*np.cos(aaa),R_*np.sin(aaa),0*aaa,'r',linewidth=0.15, alpha=0.7)
             fig.canvas.draw()
             fig.canvas.flush_events()
         # increment iteration and print statement
-        print(iteration, dt, "*", scale, "=", dt_n, current_time)
+        print(iteration, dt, "*", scale, "=", dt_n, ". T = ", current_time, \
+              ". Min spacing = ", investigate_minimum_spacing(False, False).min())
         iteration += 1
         scale += np.exp(-10*np.linalg.norm(U.new-U.val))
         
+def asympode(r,t):
+    lam = epsilon_*4.06522
+    return (512/r**9-1)/(3*np.log(0.5*r/lam)-3)
         
 def residual(u, F, dt):
     # laplacian terms
@@ -378,18 +394,21 @@ def pressure(h, hxx, hyy):
     return - (hxx+hyy) + PI(h) + Bo_*np.cos(alpha2_)*h
     
        
-def investigate_minimum_spacing():
+def investigate_minimum_spacing(plot, prints):
     min_spacings = get_minimum_spacings()
-    fig2 = plt.figure(figsize=(10,8)) 
-    ax3 = fig2.add_subplot(111, projection='3d') 
-    ax3.view_init(elev=30, azim=-160)
-    ax3.set_xlabel('x'); ax.set_ylabel('y'); ax.set_zlabel('min spacing')
-    ax3.set_zlim3d(0,0.1)  
-    ax3.grid(False)
-    ax3.plot_surface(Q.dksi.reshape(Ny_,Nx_)[1:-1,1:-1], Q.deta.reshape(Ny_,Nx_)[1:-1,1:-1], min_spacings)
-    print("Original mesh spacing: ", dksi_)
-    print("Current minimum mesh spacing: ", min_spacings.min())
-    print("Spacing at droplet boundary should ideally be of order: ", 1/a_)
+    if plot:
+        fig2 = plt.figure(figsize=(10,8)) 
+        ax3 = fig2.add_subplot(111, projection='3d') 
+        ax3.view_init(elev=30, azim=-160)
+        ax3.set_xlabel('x'); ax.set_ylabel('y'); ax.set_zlabel('min spacing')
+        ax3.set_zlim3d(0,0.1)  
+        ax3.grid(False)
+        ax3.plot_surface(Q.dksi.reshape(Ny_,Nx_)[1:-1,1:-1], Q.deta.reshape(Ny_,Nx_)[1:-1,1:-1], min_spacings)
+    if prints:
+        print("Original mesh spacing: ", dksi_)
+        print("Current minimum mesh spacing: ", min_spacings.min())
+        print("Spacing at droplet boundary should ideally be of order: ", 1/a_)
+    return min_spacings
        
 def compute_spacings():
     """
