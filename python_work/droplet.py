@@ -22,14 +22,14 @@ np.set_printoptions(edgeitems=6, suppress=True)
 #GLOBAL parameters
 R_ = 1 # radius of droplet
 a_ = 100
-epsilon_ = 5e-3 # thin liquid layer height (thickness of precursor film = h*)
+epsilon_ = 1e-2 # thin liquid layer height (thickness of precursor film = h*)
 V_, Vf_ = 0, 1 # volume of droplet (starts from 0 and stops at 1)
 
 #GLOBAL simulation variables
-Nx_, Ny_ = 61, 61 # grid points
+Nx_, Ny_ = 91, 61 # grid points
 NN_ = Nx_*Ny_ # total number of points
 smoothing_iters_ = 4 # number of smoothing iterations per time step 
-endl_, endr_ = -3, 3 # domain limits
+endl_, endr_ = -3, 6 # domain limits
 endb_, endt_ = -3, 3
 Dx_ = endr_ - endl_ # domain size Lo
 Dy_ = endt_ - endb_ 
@@ -72,7 +72,7 @@ aaa = np.linspace(0,2*np.pi)
 if plot3d_bool:
     # solution and mesh
     ax = fig.add_subplot(121, projection='3d') 
-    ax.view_init(elev=30, azim=20)
+    ax.view_init(elev=30, azim=70)
     ax.set_xlabel('x'); ax.set_ylabel('y'); ax.set_zlabel('u')
     ax.set_zlim3d(-3,4.2)  
     ax.grid(False)
@@ -106,7 +106,7 @@ def main():
     U.new = np.full(NN_, epsilon_)
     
     # initialise droplet
-    err = initialise_droplet(500, 5e-9, 20, True, True)  
+    # err = initialise_droplet(500, 5e-9, 20, True, True)  
        
     # check node spacings
     # investigate_minimum_spacing()  
@@ -123,11 +123,72 @@ def main():
     # # check PMA steady state
     # check_mesh(1000, 1e-7, 1e-4) 
     
-    # evolve droplet using pde
-    evolve_with_PDE(1e-4, 1000, 1e-2, 3e-9, 300)
+    # initialise coalescing droplets
+    err = initialise_coalescing_droplets(1000, [[0,0,1,1],[3,0,1,1]], 5e-9, 20, False, True)
     
+    # evolve droplet(s) using pde
+    evolve_with_PDE(1e-4, 1000, 1e-2, 3e-9, 400)
     
-
+def initialise_coalescing_droplets(Vsteps, info, dtmesh, loops, fromfile, tofile):
+    print("initialising coalescing droplets")
+    global J, V_, surf, mesh, mesh2
+    if fromfile:
+        # initialise from file
+        read_from_file("initdrop_coal_"+str(R_)+"_"+str(Nx_)+"-"+str(Ny_)+"_"+str(a_)+\
+                       "_"+str(epsilon_)+"_"+str(alpha_)+"_"+str(gamma_)+"_"+str(C_)+".txt")
+        # plot
+        compute_Q_spatial_ders()
+        surf.remove() 
+        surf = ax.plot_surface(Q.dksi.reshape(Ny_,Nx_), Q.deta.reshape(Ny_,Nx_), U.val.reshape(Ny_,Nx_), \
+                                    cmap=cm.coolwarm, rstride=1, cstride=1, linewidth=0, \
+                                    antialiased=False,alpha=0.5)
+        mesh.remove() 
+        mesh = ax.plot_wireframe(Q.dksi.reshape(Ny_,Nx_), Q.deta.reshape(Ny_,Nx_), np.full((Ny_,Nx_),-3), linewidth=0.2)
+        mesh2.remove()
+        mesh2 = ax2.plot_wireframe(Q.dksi.reshape(Ny_,Nx_), Q.deta.reshape(Ny_,Nx_), np.zeros((Ny_,Nx_)), linewidth=0.2, rcount=Ny_, ccount=Nx_)
+        fig.canvas.draw()
+        fig.canvas.flush_events()
+        return 0
+    # else inflate drops
+    Vf1 = info[0][3]
+    Vf2 = info[1][3]
+    infoarg = []; infoarg.append(info[0].copy()); infoarg.append(info[1].copy())
+    for i in range(1,Vsteps+1):
+        U.val = U.new.copy()
+        #compute derivatives
+        compute_Q_spatial_ders()
+        J = Q.d2ksi*Q.d2eta - Q.dksideta**2
+        compute_u_spatial_ders()
+        #update solution
+        infoarg[0][3] = Vf1*i/Vsteps
+        infoarg[1][3] = Vf2*i/Vsteps
+        U.new = compute_U2(infoarg)
+        print(i/Vsteps)
+        loop_pma(dtmesh, loops)
+        if plot3d_bool and i%100 == 0:
+            # solution
+            surf.remove() 
+            surf = ax.plot_surface(Q.dksi.reshape(Ny_,Nx_), Q.deta.reshape(Ny_,Nx_), U.val.reshape(Ny_,Nx_), \
+                                   rstride=1, cstride=1, linewidth=0, \
+                                   cmap=cm.coolwarm, antialiased=False,alpha=0.5)
+            mesh.remove()
+            mesh = ax.plot_wireframe(Q.dksi.reshape(Ny_,Nx_), Q.deta.reshape(Ny_,Nx_), np.full((Ny_,Nx_),-3), \
+                                     linewidth=0.2, rstride=2, cstride=2)
+            # mesh
+            mesh2.remove()
+            mesh2 = ax2.plot_wireframe(Q.dksi.reshape(Ny_,Nx_), Q.deta.reshape(Ny_,Nx_), np.zeros((Ny_,Nx_)), \
+                                       linewidth=0.2, rstride=1, cstride=1)
+            fig.canvas.draw()
+            fig.canvas.flush_events() 
+    U.val = U.new.copy()
+    print("initialisation complete")
+    # write values to a file for quick access??
+    if tofile:
+        write_to_file("initdrop_coal_"+str(R_)+"_"+str(Nx_)+"-"+str(Ny_)+"_"+str(a_)+\
+                       "_"+str(epsilon_)+"_"+str(alpha_)+"_"+str(gamma_)+"_"+str(C_)+".txt")
+    return 0
+        
+    
 def initialise_droplet(Vsteps, dtmesh, loops, fromfile, tofile):
     print("initialising droplet")
     global J, V_, surf, mesh, mesh2
@@ -348,7 +409,25 @@ def evolve_with_PDE(dt, iterMax, tol, dtmesh, pmaloops):
               ". Min spacing = ", investigate_minimum_spacing(False, False).min())
         iteration += 1
         scale += np.exp(-10*np.linalg.norm(U.new-U.val))
-        
+  
+def compute_U2(info):
+    """
+    # G = R_ + np.log((1+np.exp(-2*a_*(x+R_)))/(1+np.exp(-2*a_*(x-R_))))/(2*a_)
+    # H = 4*V_*(1-psi*psi/(R_*R_))/(R_*R_)
+    # U =  epsilon_ + (1-epsilon_)*H(G(np.sqrt(Q.dksi*Q.dksi+Q.deta*Q.deta)))
+    """
+    ret = np.full(NN_, epsilon_)
+    for dropinfo in info:
+        x, y, R, V = dropinfo[:]
+        ret += (1-epsilon_)*H2(G2(np.sqrt((Q.dksi-x)**2+(Q.deta-y)**2), R), R, V)
+    return ret
+
+def G2(xx, R):
+    return R + np.log((1+np.exp(-2*a_*(xx+R)))/(1+np.exp(-2*a_*(xx-R))))/(2*a_)
+  
+def H2(psi, R, V):
+    return 4*V*(1-psi*psi/(R*R))/(R*R)
+
 def asympode(r,t):
     lam = epsilon_*4.06522
     return (512/r**9-1)/(3*np.log(0.5*r/lam)-3)
